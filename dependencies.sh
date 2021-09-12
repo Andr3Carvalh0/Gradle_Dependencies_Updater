@@ -17,6 +17,7 @@
 # And automatically creates a PR for a dependency version update, if needed.
 #
 BRANCH_PREFIX="dependencies_bot"
+SLEEP_DURATION="1"
 
 function main() {
 	local group="$1"
@@ -46,7 +47,7 @@ function main() {
 
 function isAlreadyProcessed() {
 	local branch="$(id "$1" "$2")"
-	git rev-parse --verify "origin/$branch"
+	git ls-remote --exit-code --heads "origin" "$branch"
 	
 	local fetchResult="$?"
 
@@ -146,7 +147,7 @@ function publish() {
 	git commit -m "Update $name to version $version"
 
 	echo "Pushing to origin..."
-	git push origin "$branch"
+	git push "origin" "$branch"
 
 	if [ -z "$workspace" ] || [ -z "$repo" ] || [ -z "$user" ] || [ -z "$password" ]; then
 		echo "Missing params to be able to open a Pull Request. Skipping it..."
@@ -221,5 +222,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	availableVersion=$(_jq '.availableVersion')
 	
 	main "$group" "$name" "$currentVersion" "$availableVersion" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password"
-	sleep 1
+
+	echo "Sleeping for $SLEEP_DURATION second(s) before continuing..."
+	sleep $SLEEP_DURATION
 done
