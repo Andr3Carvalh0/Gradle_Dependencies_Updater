@@ -7,6 +7,6 @@ ext {
 
     dependencies = [
         detektFormatting   : "io.gitlab.arturbosch.detekt:detekt-formatting:${versions.detekt}"
-        kotlinKapt         : "org.jetbrains.kotlin:kotlin-annotation-processing-gradle${versions.kapt}"    
+        kotlinKapt         : "org.jetbrains.kotlin:kotlin-annotation-processing-gradle:${versions.kapt}"    
     ]
 }
