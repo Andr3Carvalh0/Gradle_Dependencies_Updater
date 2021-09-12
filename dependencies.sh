@@ -32,9 +32,12 @@ function main() {
 
 	echo ""
 	echo "Processing $group:$name..."
+	echo "Resetting back to '$mainBranch' branch..."
+	git checkout "${mainBranch}"
+	git reset --hard "${mainBranch}"
 
 	if [[ "$(isAlreadyProcessed "$name" "$toVersion")" == "0" ]]; then
-		prepareBranch "$name" "$toVersion" "$mainBranch"
+		prepareBranch "$name" "$toVersion"
 		updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
 		publish "$name" "$toVersion" "$workspace" "$repo" "$user" "$password"
 	else
@@ -44,7 +47,7 @@ function main() {
 
 function isAlreadyProcessed() {
 	local branch="$(id "$1" "$2")"
-	git fetch --depth=1 "origin" "$branch"
+	git fetch "origin" "$branch"
 
 	local fetchResult="$?"
 
@@ -55,20 +58,8 @@ function isAlreadyProcessed() {
 	fi
 }
 
-function resetBranch() {
-	local mainBranch="$1"
-
-	echo "Fetching '$branch' branch."
-	git fetch "origin" "$branch"
-
-	echo "Resetting back to '$branch' branch..."
-	git checkout "${branch}"
-}
-
 function prepareBranch() {
 	local branch="$(id "$1" "$2")"
-
-	resetBranch "$3"
 
 	echo "Preparing working branch..."
 	git checkout -b "$branch"
@@ -216,6 +207,10 @@ fi
 if [ -z "$branch" ]; then
 	branch="release"
 fi
+
+
+echo "Fetching '$branch' branch."
+git fetch "origin" "$branch"
 
 for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	_jq() {
