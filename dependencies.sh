@@ -34,7 +34,6 @@ function main() {
 	echo "Processing $group:$name..."
 	echo "Resetting back to '$mainBranch' branch..."
 	git checkout "${mainBranch}"
-	git reset --hard "${mainBranch}"
 
 	if [[ "$(isAlreadyProcessed "$name" "$toVersion")" == "0" ]]; then
 		prepareBranch "$name" "$toVersion"
@@ -47,8 +46,8 @@ function main() {
 
 function isAlreadyProcessed() {
 	local branch="$(id "$1" "$2")"
-	git fetch "origin" "$branch"
-
+	git rev-parse --verify "origin/$branch"
+	
 	local fetchResult="$?"
 
 	if [[ "$fetchResult" != "0" ]]; then
@@ -222,4 +221,5 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	availableVersion=$(_jq '.availableVersion')
 	
 	main "$group" "$name" "$currentVersion" "$availableVersion" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password"
+	sleep 1
 done
