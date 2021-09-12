@@ -1,0 +1,8 @@
+[
+	{
+		"group": "io.gitlab.arturbosch.detekt",
+		"name": "detekt-formatting",
+		"currentVersion": "1.18.0",
+		"availableVersion": "1.18.1"
+	}
+]

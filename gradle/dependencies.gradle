@@ -1,0 +1,12 @@
+ext {
+    versions = [
+        kotlin                 : "1.5.21",
+        detektDummy            : "1.18.0",
+        detekt                 : "1.18.0"
+    ]
+
+    dependencies = [
+        detektFormatting   : "io.gitlab.arturbosch.detekt:detekt-formatting:${versions.detekt}"
+        kotlinKapt         : "org.jetbrains.kotlin:kotlin-annotation-processing-gradle${versions.kapt}"    
+    ]
+}
