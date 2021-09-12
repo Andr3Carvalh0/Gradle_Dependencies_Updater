@@ -208,7 +208,6 @@ if [ -z "$branch" ]; then
 	branch="release"
 fi
 
-
 echo "Fetching '$branch' branch."
 git fetch "origin" "$branch"
 
