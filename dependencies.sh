@@ -32,9 +32,9 @@ function main() {
 
 	echo ""
 	echo "Processing $group:$name..."
-	echo "Checking out '$mainBranch' branch..."
-	git checkout "$mainBranch"
-
+	echo "Resetting back to '$mainBranch' branch..."
+	git reset --hard "origin/${mainBranch}"
+	
 	if [[ "$(isAlreadyProcessed "$name" "$toVersion")" == "0" ]]; then
 		prepareBranch "$name" "$toVersion"
 		updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
