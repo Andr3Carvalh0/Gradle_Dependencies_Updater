@@ -32,14 +32,9 @@ function main() {
 
 	echo ""
 	echo "Processing $group:$name..."
-
-	echo "Fetching '$branch' branch."
-	git fetch "origin" "$branch"
-
 	echo "Resetting back to '$mainBranch' branch..."
-	git reset --hard "origin/${mainBranch}"
-	git checkout -b "${mainBranch}" "origin/${mainBranch}"
-	
+	git checkout "${mainBranch}"
+
 	if [[ "$(isAlreadyProcessed "$name" "$toVersion")" == "0" ]]; then
 		prepareBranch "$name" "$toVersion"
 		updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
@@ -211,6 +206,9 @@ fi
 if [ -z "$branch" ]; then
 	branch="release"
 fi
+
+echo "Fetching '$branch' branch."
+git fetch "origin" "$branch"
 
 for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	_jq() {
