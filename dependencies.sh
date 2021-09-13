@@ -168,10 +168,10 @@ function publish() {
 						}
 					},
 					\"destination\": {
-				        \"branch\": {
-				            \"name\": \"$mainBranch\"
-				        }
-				    },
+						\"branch\": {
+							\"name\": \"$mainBranch\"
+						}
+					},
 					\"close_source_branch\": true
 				}"
 	fi
