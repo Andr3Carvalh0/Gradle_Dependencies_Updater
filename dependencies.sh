@@ -31,6 +31,7 @@ function main() {
 	local repo="$8"
 	local user="$9"
 	local password="${10}"
+	local reviewers="${11}"
 
 	echo ""
 	echo "Processing $group:$name..."
@@ -40,7 +41,7 @@ function main() {
 	if [[ "$(isAlreadyProcessed "$name" "$toVersion")" == "0" ]]; then
 		prepareBranch "$name" "$toVersion"
 		updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
-		publish "$name" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch"
+		publish "$name" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers"
 	else
 		echo "PR is already open for $group:$name:$toVersion."
 	fi
@@ -143,6 +144,7 @@ function publish() {
 	local password="$6"
 	local gradleDependenciesPath="$7"
 	local mainBranch="$8"
+	local reviewers="$9"
 	local branch="$(id "$name" "$version")"
 
 	echo "Committing changes..."
@@ -167,6 +169,7 @@ function publish() {
 							\"name\": \"$branch\"
 						}
 					},
+					$reviewers
 					\"destination\": {
 						\"branch\": {
 							\"name\": \"$mainBranch\"
@@ -191,6 +194,7 @@ function help() {
 	echo "\t-r, --repo\t The repos name"
 	echo "\t-u, --user\t The bitbuckets account username"
 	echo "\t-p, --password\t The bitbuckets account password"
+	echo "\t--reviewers\t The uuid of the reviewers to add in the PR"
 	exit 1
 }
 
@@ -203,6 +207,7 @@ while [ $# -gt 0 ]; do
 		-r|-repo|--repo) repo="$2" ;;
 		-u|-user|--user) user="$2" ;;
 		-p|-password|--password) password="$2" ;;
+		-reviewers|--reviewers) reviewers="$2" ;;
 	esac
 	shift
 	shift
@@ -215,6 +220,22 @@ fi
 
 if [ -z "$branch" ]; then
 	branch="release"
+fi
+
+if [ -n "$reviewers" ]; then
+	IFS=',' read -r -a reviewersArray <<< "$reviewers"
+
+	reviewers="\"reviewers\": ["
+
+	for index in "${!reviewersArray[@]}"
+	do
+		reviewers="$reviewers{ \"uuid\": \"{${reviewersArray[index]}}\" },"
+	done
+
+	reviewers="${reviewers::${#reviewers}-1}"
+	reviewers="$reviewers],"
+else
+	reviewers=""
 fi
 
 echo "Fetching '$branch' branch."
@@ -230,7 +251,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	currentVersion=$(_jq '.currentVersion')
 	availableVersion=$(_jq '.availableVersion')
 	
-	main "$group" "$name" "$currentVersion" "$availableVersion" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password"
+	main "$group" "$name" "$currentVersion" "$availableVersion" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password" "$reviewers"
 
 	echo ""
 	echo "Sleeping for $SLEEP_DURATION second(s) before continuing..."
