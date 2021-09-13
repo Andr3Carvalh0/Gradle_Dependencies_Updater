@@ -40,7 +40,7 @@ function main() {
 	if [[ "$(isAlreadyProcessed "$name" "$toVersion")" == "0" ]]; then
 		prepareBranch "$name" "$toVersion"
 		updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
-		publish "$name" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath"
+		publish "$name" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch"
 	else
 		echo "PR is already open for $group:$name:$toVersion."
 	fi
@@ -142,6 +142,7 @@ function publish() {
 	local user="$5"
 	local password="$6"
 	local gradleDependenciesPath="$7"
+	local mainBranch="$8"
 	local branch="$(id "$name" "$version")"
 
 	echo "Committing changes..."
@@ -165,7 +166,13 @@ function publish() {
 						\"branch\": {
 							\"name\": \"$branch\"
 						}
-					}
+					},
+					\"destination\": {
+				        \"branch\": {
+				            \"name\": \"$mainBranch\"
+				        }
+				    },
+					\"close_source_branch\": true
 				}"
 	fi
 }
