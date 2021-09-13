@@ -49,12 +49,13 @@ function isAlreadyProcessed() {
 	local branch="$(id "$1" "$2")"
 	git ls-remote --exit-code --heads "origin" "$branch"
 	
-	local fetchResult="$?"
+	local hasError="$?"
 
-	if [[ "$fetchResult" != "0" ]]; then
-		echo "0"
-	else
+	if [[ "$hasError" == "0" ]]; then
+		# The git command didn't return an error which means the branch already exists on the remote
 		echo "1"
+	else
+		echo "0"
 	fi
 }
 
