@@ -40,7 +40,7 @@ function main() {
 	if [[ "$(isAlreadyProcessed "$name" "$toVersion")" == "0" ]]; then
 		prepareBranch "$name" "$toVersion"
 		updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
-		publish "$name" "$toVersion" "$workspace" "$repo" "$user" "$password"
+		publish "$name" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath"
 	else
 		echo "PR is already open for $group:$name:$toVersion."
 	fi
@@ -141,10 +141,11 @@ function publish() {
 	local repo="$4"
 	local user="$5"
 	local password="$6"
+	local gradleDependenciesPath="$7"
 	local branch="$(id "$name" "$version")"
 
 	echo "Committing changes..."
-	git add .
+	git add "$gradleDependenciesPath"
 	git commit -m "Update $name to version $version"
 
 	echo "Pushing to remote..."
@@ -224,6 +225,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	
 	main "$group" "$name" "$currentVersion" "$availableVersion" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password"
 
+	echo ""
 	echo "Sleeping for $SLEEP_DURATION second(s) before continuing..."
 	sleep $SLEEP_DURATION
 done
