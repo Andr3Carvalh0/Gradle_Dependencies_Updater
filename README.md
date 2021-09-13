@@ -8,5 +8,5 @@ For the script to function you need to at least pass 2 parameters: `--json` were
 
 eg: 
 ```
-sh ./dependencies.sh --json "`cat ./examples/data_with_duplicated.json`" --gradleDependenciesPath "./gradle/dependencies.gradle"
+./dependencies.sh --json "`cat ./examples/data_with_duplicated.json`" --gradleDependenciesPath "./gradle/dependencies.gradle"
 ```

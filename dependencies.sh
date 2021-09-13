@@ -18,6 +18,7 @@
 #
 BRANCH_PREFIX="dependencies_bot"
 SLEEP_DURATION="1"
+REMOTE="origin"
 
 function main() {
 	local group="$1"
@@ -47,7 +48,7 @@ function main() {
 
 function isAlreadyProcessed() {
 	local branch="$(id "$1" "$2")"
-	git ls-remote --exit-code --heads "origin" "$branch"
+	git ls-remote --exit-code --heads "$REMOTE" "$branch"
 	
 	local hasError="$?"
 
@@ -103,7 +104,6 @@ function updateDependenciesFile() {
 			echo "Couldnt find the dependency version variable name."
 		fi
 	else
-		# Happened for example for the gradle tools version. Add support for it in the future after the normal flow is properly tested.
 		echo "Couldnt find the dependency declared in the dependency file. Could it be that you are hardcoding it somewhere else?"
 	fi
 }
@@ -147,8 +147,8 @@ function publish() {
 	git add .
 	git commit -m "Update $name to version $version"
 
-	echo "Pushing to origin..."
-	git push "origin" "$branch"
+	echo "Pushing to remote..."
+	git push "$REMOTE" "$branch"
 
 	if [ -z "$workspace" ] || [ -z "$repo" ] || [ -z "$user" ] || [ -z "$password" ]; then
 		echo "Missing params to be able to open a Pull Request. Skipping it..."
@@ -210,7 +210,7 @@ if [ -z "$branch" ]; then
 fi
 
 echo "Fetching '$branch' branch."
-git fetch "origin" "$branch"
+git fetch "$REMOTE" "$branch"
 
 for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	_jq() {
