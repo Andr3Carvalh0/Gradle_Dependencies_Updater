@@ -194,7 +194,7 @@ function help() {
 	echo "\t-r, --repo\t The repos name"
 	echo "\t-u, --user\t The bitbuckets account username"
 	echo "\t-p, --password\t The bitbuckets account password"
-	echo "\t--reviewers\t The uuid of the reviewers to add in the PR"
+	echo "\t--reviewers\t The uuid of the reviewers, separated by ',', to add in the PR"
 	exit 1
 }
 
