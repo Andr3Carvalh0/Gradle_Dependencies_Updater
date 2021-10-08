@@ -96,10 +96,15 @@ function updateDependenciesFile() {
 		#
 		# And we are updating the compose version, and not the composeNavigation, for example
 		local originalVersion="$(findInFile "$versionVariable " "$gradleDependenciesPath")"
-		local newVersion=$(echo "$originalVersion" | sed "s/${fromVersion}/${toVersion}/g")
 
-		echo "Saving $gradleDependenciesPath file..."
-		echo "$(echo "$(cat "$gradleDependenciesPath")" | sed "s/${originalVersion}/${newVersion}/g")" > "$gradleDependenciesPath"
+		if [ -z "$originalVersion" ]; then
+			echo "Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE"
+		else
+			local newVersion=$(echo "$originalVersion" | sed "s/${fromVersion}/${toVersion}/g")
+
+			echo "Saving $gradleDependenciesPath file..."
+			echo "$(echo "$(cat "$gradleDependenciesPath")" | sed "s/${originalVersion}/${newVersion}/g")" > "$gradleDependenciesPath"	
+		fi
 	else
 		echo "Couldnt find the dependency declared in the dependency file. Could it be that you are hardcoding it somewhere else?"
 	fi
@@ -164,34 +169,39 @@ function publish() {
 
 	echo "Committing changes..."
 	git add "$gradleDependenciesPath"
-	git commit -m "Update $name to version $version"
 
-	echo "Pushing to remote..."
-	git push "$REMOTE" "$branch"
+	if [[ `git status --porcelain` ]]; then
+		git commit -m "Update $name to version $version"
+		
+		echo "Pushing to remote..."
+		git push "$REMOTE" "$branch"
 
-	if [ -z "$workspace" ] || [ -z "$repo" ] || [ -z "$user" ] || [ -z "$password" ]; then
-		echo "Missing params to be able to open a Pull Request. Skipping it..."
+		if [ -z "$workspace" ] || [ -z "$repo" ] || [ -z "$user" ] || [ -z "$password" ]; then
+			echo "Missing params to be able to open a Pull Request. Skipping it..."
+		else
+			echo "Opening a Pull Request..."
+			curl "https://api.bitbucket.org/2.0/repositories/$workspace/$repo/pullrequests" \
+				--user "$user:$password" \
+				--request "POST" \
+				--header "Content-Type: application/json" \
+				--data "{ 
+						\"title\": \"Update $name to version $version\",
+						\"source\": {
+							\"branch\": {
+								\"name\": \"$branch\"
+							}
+						},
+						$reviewers
+						\"destination\": {
+							\"branch\": {
+								\"name\": \"$mainBranch\"
+							}
+						},
+						\"close_source_branch\": true
+					}"
+		fi
 	else
-		echo "Opening a Pull Request..."
-		curl "https://api.bitbucket.org/2.0/repositories/$workspace/$repo/pullrequests" \
-			--user "$user:$password" \
-			--request "POST" \
-			--header "Content-Type: application/json" \
-			--data "{ 
-					\"title\": \"Update $name to version $version\",
-					\"source\": {
-						\"branch\": {
-							\"name\": \"$branch\"
-						}
-					},
-					$reviewers
-					\"destination\": {
-						\"branch\": {
-							\"name\": \"$mainBranch\"
-						}
-					},
-					\"close_source_branch\": true
-				}"
+		echo "Nothing to push. Skipping..."
 	fi
 }
 
