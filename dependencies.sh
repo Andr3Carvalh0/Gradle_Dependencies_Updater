@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 13th September 2021
+# Last modified: 8th October 2021
 # 
 # Processes a json with the format:
 #	[
@@ -16,7 +16,7 @@
 #
 # And automatically creates a PR for a dependency version update, if needed.
 #
-BRANCH_PREFIX="dependencies_bot"
+BRANCH_PREFIX="dependabot"
 SLEEP_DURATION="1"
 REMOTE="origin"
 
@@ -32,18 +32,24 @@ function main() {
 	local user="$9"
 	local password="${10}"
 	local reviewers="${11}"
+	local versionVariable="$(findVersionsVariableName "$group" "$name" "$gradleDependenciesPath")"
 
 	echo ""
-	echo "Processing $group:$name..."
-	echo "Resetting back to '$mainBranch' branch..."
-	git checkout "${mainBranch}"
 
-	if [[ "$(isAlreadyProcessed "$name" "$toVersion")" == "0" ]]; then
-		prepareBranch "$name" "$toVersion"
-		updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
-		publish "$name" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers"
+	if [[ "$versionVariable" != "-1" ]]; then
+		echo "Processing $group:$name..."
+		echo "Resetting back to '$mainBranch' branch..."
+		git checkout "${mainBranch}"
+
+		if [[ "$(isAlreadyProcessed "$versionVariable" "$toVersion")" == "0" ]]; then
+			prepareBranch "$versionVariable" "$toVersion"
+			updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
+			publish "$versionVariable" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers"
+		else
+			echo "PR is already open for $group:$name:$toVersion."
+		fi
 	else
-		echo "PR is already open for $group:$name:$toVersion."
+		echo "Couldnt find the dependency declared in the dependency file. Could it be that you are hardcoding it somewhere else?"
 	fi
 }
 
@@ -76,36 +82,45 @@ function updateDependenciesFile() {
 	local gradleDependenciesPath="$5"
 	local branch="$(id "$name" "$toVersion")"
 
-	echo "Reading '$gradleDependenciesPath' and trying to find if dependency is declared there..."
+	local versionVariable="$(findVersionsVariableName "$group" "$name" "$gradleDependenciesPath")"
+
+	if [[ "$versionVariable" != "-1" ]]; then
+		echo "Updating $group:$name from $fromVersion to $toVersion"
+		# The space at the end of "$versionVariable " is important here. 
+		# It prevents false positives when we have something like:
+		#
+		# ...
+		# composeNavigation      : '2.4.0-alpha06',
+		# compose                : '1.0.1',
+		# ...
+		#
+		# And we are updating the compose version, and not the composeNavigation, for example
+		local originalVersion="$(findInFile "$versionVariable " "$gradleDependenciesPath")"
+		local newVersion=$(echo "$originalVersion" | sed "s/${fromVersion}/${toVersion}/g")
+
+		echo "Saving $gradleDependenciesPath file..."
+		echo "$(echo "$(cat "$gradleDependenciesPath")" | sed "s/${originalVersion}/${newVersion}/g")" > "$gradleDependenciesPath"
+	else
+		echo "Couldnt find the dependency declared in the dependency file. Could it be that you are hardcoding it somewhere else?"
+	fi
+}
+
+function findVersionsVariableName() {
+	local group="$1"
+	local name="$2"
+	local gradleDependenciesPath="$3"
 	local dependency="$(findInFile "$group:$name:" "$gradleDependenciesPath")"
 
 	if [ -n "$dependency" ]; then
-		echo "Finding versions.variable name..."
 		local versionVariable="$(substring "." "" "$(substring "{" "}" "$dependency")")"
 
 		if [ -n "$versionVariable" ]; then
-			echo "Updating $group:$name from $fromVersion to $toVersion"
-			local versionVariable="$(substring "." "" "$(substring "{" "}" "$dependency")")"
-			
-			# The space at the end of "$versionVariable " is important here. 
-			# It prevents false positives when we have something like:
-			#
-			# ...
-			# composeNavigation      : '2.4.0-alpha06',
-			# compose                : '1.0.1',
-			# ...
-			#
-			# And we are updating the compose version, and not the composeNavigation, for example
-			local originalVersion="$(findInFile "$versionVariable " "$gradleDependenciesPath")"
-			local newVersion=$(echo "$originalVersion" | sed "s/${fromVersion}/${toVersion}/g")
-
-			echo "Saving $gradleDependenciesPath file..."
-			echo "$(echo "$(cat "$gradleDependenciesPath")" | sed "s/${originalVersion}/${newVersion}/g")" > "$gradleDependenciesPath"
+			echo "$versionVariable"
 		else
-			echo "Couldnt find the dependency version variable name."
+			echo "-1"
 		fi
 	else
-		echo "Couldnt find the dependency declared in the dependency file. Could it be that you are hardcoding it somewhere else?"
+		echo "-1"
 	fi
 }
 
