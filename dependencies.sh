@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 8th October 2021
+# Last modified: 12th October 2021
 # 
 # Processes a json with the format:
 #	[
@@ -9,7 +9,8 @@
 #			"group": "...",
 #			"name": "...",
 #			"currentVersion": "...",
-#			"availableVersion": "..."
+#			"availableVersion": "...",
+#			"changelog": "..."
 #		},
 #		(...)
 #	]
@@ -19,12 +20,13 @@
 BRANCH_PREFIX="dependabot"
 SLEEP_DURATION="1"
 REMOTE="origin"
+DEFAULT_BRANCH="release"
 
 function main() {
-	local group="$1"
-	local name="$2"
-	local fromVersion="$3"
-	local toVersion="$4"
+	local extVersionVariable="$1"
+	local fromVersion="$2"
+	local toVersion="$3"
+	local changelog="$4"
 	local gradleDependenciesPath="$5"
 	local mainBranch="$6"
 	local workspace="$7"
@@ -32,25 +34,14 @@ function main() {
 	local user="$9"
 	local password="${10}"
 	local reviewers="${11}"
-	local versionVariable="$(findVersionsVariableName "$group" "$name" "$gradleDependenciesPath")"
+	local script="${12}"
 
-	echo ""
+	log "\nResetting back to '$mainBranch' branch..."
+	git checkout "${mainBranch}"
 
-	if [[ "$versionVariable" != "-1" ]]; then
-		echo "Processing $group:$name..."
-		echo "Resetting back to '$mainBranch' branch..."
-		git checkout "${mainBranch}"
-
-		if [[ "$(isAlreadyProcessed "$versionVariable" "$toVersion")" == "0" ]]; then
-			prepareBranch "$versionVariable" "$toVersion"
-			updateDependenciesFile "$group" "$name" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
-			publish "$versionVariable" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers"
-		else
-			echo "PR is already open for $group:$name:$toVersion."
-		fi
-	else
-		echo "Couldnt find the dependency declared in the dependency file. Could it be that you are hardcoding it somewhere else?"
-	fi
+	prepareBranch "$extVersionVariable" "$toVersion"
+	updateDependenciesFile "$extVersionVariable" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
+	publish "$extVersionVariable" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers" "$changelog" "$script"
 }
 
 function isAlreadyProcessed() {
@@ -70,43 +61,35 @@ function isAlreadyProcessed() {
 function prepareBranch() {
 	local branch="$(id "$1" "$2")"
 
-	echo "Preparing working branch..."
+	log "\nPreparing working branch..."
 	git checkout -b "$branch"
 }
 
 function updateDependenciesFile() {
-	local group="$1"
-	local name="$2"
-	local fromVersion="$3"
-	local toVersion="$4"
-	local gradleDependenciesPath="$5"
-	local branch="$(id "$name" "$toVersion")"
+	local extVersionVariable="$1"
+	local fromVersion="$2"
+	local toVersion="$3"
+	local gradleDependenciesPath="$4"
 
-	local versionVariable="$(findVersionsVariableName "$group" "$name" "$gradleDependenciesPath")"
+	log "\nUpdating $extVersionVariable from $fromVersion to $toVersion"
+	# The space at the end of "$extVersionVariable " is important here.
+	# It prevents false positives when we have something like:
+	#
+	# ...
+	# composeNavigation      : '2.4.0-alpha06',
+	# compose                : '1.0.1',
+	# ...
+	#
+	# And we are updating the compose version, and not the composeNavigation, for example
+	local originalVersion="$(findInFile "$extVersionVariable " "$gradleDependenciesPath")"
 
-	if [[ "$versionVariable" != "-1" ]]; then
-		echo "Updating $group:$name from $fromVersion to $toVersion"
-		# The space at the end of "$versionVariable " is important here. 
-		# It prevents false positives when we have something like:
-		#
-		# ...
-		# composeNavigation      : '2.4.0-alpha06',
-		# compose                : '1.0.1',
-		# ...
-		#
-		# And we are updating the compose version, and not the composeNavigation, for example
-		local originalVersion="$(findInFile "$versionVariable " "$gradleDependenciesPath")"
-
-		if [ -z "$originalVersion" ]; then
-			echo "Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE"
-		else
-			local newVersion=$(echo "$originalVersion" | sed "s/${fromVersion}/${toVersion}/g")
-
-			echo "Saving $gradleDependenciesPath file..."
-			echo "$(echo "$(cat "$gradleDependenciesPath")" | sed "s/${originalVersion}/${newVersion}/g")" > "$gradleDependenciesPath"	
-		fi
+	if [ -z "$originalVersion" ]; then
+		log "Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE"
 	else
-		echo "Couldnt find the dependency declared in the dependency file. Could it be that you are hardcoding it somewhere else?"
+		local newVersion=$(echo "$originalVersion" | sed "s/${fromVersion}/${toVersion}/g")
+
+		log "Saving $gradleDependenciesPath file..."
+		echo "$(echo "$(cat "$gradleDependenciesPath")" | sed "s/${originalVersion}/${newVersion}/g")" > "$gradleDependenciesPath"
 	fi
 }
 
@@ -155,6 +138,10 @@ function substring() {
 	fi
 }
 
+function log() {
+	printf "$1\n"
+}
+
 function publish() {
 	local name="$1"
 	local version="$2"
@@ -165,27 +152,35 @@ function publish() {
 	local gradleDependenciesPath="$7"
 	local mainBranch="$8"
 	local reviewers="$9"
+	local changelog="${10}"
+	local script="${11}"
 	local branch="$(id "$name" "$version")"
 
-	echo "Committing changes..."
+	log "\nCommitting changes..."
 	git add "$gradleDependenciesPath"
 
 	if [[ `git status --porcelain` ]]; then
+		if [ -n "$script" ]; then
+			log "\nExecuting post script: '${script}'..."
+		 	$script "$name" "$version"
+		fi
+
 		git commit -m "Update $name to version $version"
 		
-		echo "Pushing to remote..."
+		log "\nPushing changes to remote..."
 		git push "$REMOTE" "$branch"
 
 		if [ -z "$workspace" ] || [ -z "$repo" ] || [ -z "$user" ] || [ -z "$password" ]; then
-			echo "Missing params to be able to open a Pull Request. Skipping it..."
+			log "\nMissing params to be able to open a Pull Request. Skipping it..."
 		else
-			echo "Opening a Pull Request..."
+			log "\nOpening a Pull Request..."
 			curl "https://api.bitbucket.org/2.0/repositories/$workspace/$repo/pullrequests" \
 				--user "$user:$password" \
 				--request "POST" \
 				--header "Content-Type: application/json" \
 				--data "{ 
 						\"title\": \"Update $name to version $version\",
+						\"description\": \"It updates:\n\n$changelog\",
 						\"source\": {
 							\"branch\": {
 								\"name\": \"$branch\"
@@ -201,7 +196,7 @@ function publish() {
 					}"
 		fi
 	else
-		echo "Nothing to push. Skipping..."
+		log "\nNothing to push. Skipping..."
 	fi
 }
 
@@ -210,16 +205,16 @@ function id() {
 }
 
 function help() {
-	echo ""
-	echo "Usage: $0 -j json -g dependecies file path"
-	echo "\t-j, --json\t The dependencies json content."
-	echo "\t-g, --gradleDependenciesPath\t The path for the gradle file where the dependencies are declared"
-	echo "\t-b, --branch\t The name of the main git branch"
-	echo "\t-w, --workspace\t The repos workspace name"
-	echo "\t-r, --repo\t The repos name"
-	echo "\t-u, --user\t The bitbuckets account username"
-	echo "\t-p, --password\t The bitbuckets account password"
-	echo "\t--reviewers\t The uuid of the reviewers, separated by ',', to add in the PR"
+	log "Usage: $0 -j json -g dependecies file path"
+	log "\t-j, --json\t The dependencies json content."
+	log "\t-g, --gradleDependenciesPath\t The path for the gradle file where the dependencies are declared"
+	log "\t-b, --branch\t The name of the main git branch"
+	log "\t-w, --workspace\t The repos workspace name"
+	log "\t-r, --repo\t The repos name"
+	log "\t-u, --user\t The bitbuckets account username"
+	log "\t-p, --password\t The bitbuckets account password"
+	log "\t--reviewers\t The uuid of the reviewers, separated by ',', to add in the PR"
+	log "\t-s, --script\t The path to a shell script to execute after the dependency is updated. It will receive the extVariable name and the new version number as params."
 	exit 1
 }
 
@@ -233,18 +228,19 @@ while [ $# -gt 0 ]; do
 		-u|-user|--user) user="$2" ;;
 		-p|-password|--password) password="$2" ;;
 		-reviewers|--reviewers) reviewers="$2" ;;
+		-s|-script|--script) script="$2" ;;
 	esac
 	shift
 	shift
 done
 
 if [ -z "$json" ] || [ -z "$gradleDependenciesPath" ]; then
-	echo "You are missing one of the require params."
+	log "You are missing one of the require params.\n"
 	help
 fi
 
 if [ -z "$branch" ]; then
-	branch="release"
+	branch="$DEFAULT_BRANCH"
 fi
 
 if [ -n "$reviewers" ]; then
@@ -263,8 +259,12 @@ else
 	reviewers=""
 fi
 
-echo "Fetching '$branch' branch."
+log "Fetching '$branch' branch."
 git fetch "$REMOTE" "$branch"
+
+transformedDependencies=()
+transformedVersions=()
+transformedChangelogs=()
 
 for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	_jq() {
@@ -275,10 +275,40 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	name=$(_jq '.name')
 	currentVersion=$(_jq '.currentVersion')
 	availableVersion=$(_jq '.availableVersion')
-	
-	main "$group" "$name" "$currentVersion" "$availableVersion" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password" "$reviewers"
+	changelog=$(_jq '.changelog')
 
-	echo ""
-	echo "Sleeping for $SLEEP_DURATION second(s) before continuing..."
+	extVersionVariable="$(findVersionsVariableName "$group" "$name" "$gradleDependenciesPath")"
+
+	log "\nProcessing $group:$name..."
+
+	if [[ "$extVersionVariable" != "-1" ]]; then
+		if [[ "$(isAlreadyProcessed "$versionVariable" "$toVersion")" == "0" ]]; then
+			index=${#transformedDependencies[@]}
+			changelogMd="- [${name}](${changelog})"
+
+			for i in "${!transformedDependencies[@]}"; do
+				if [[ "${transformedDependencies[$i]}" = "${extVersionVariable}" ]]; then
+					index="${i}"
+					changelogMd="${changelogMd}\n${transformedChangelogs[${i}]}"
+				fi
+			done
+
+			transformedDependencies[$index]="${extVersionVariable}"
+			transformedVersions[$index]="${currentVersion} ${availableVersion}"
+			transformedChangelogs[$index]="${changelogMd}"
+		else
+			log "PR is already open for $group:$name:$toVersion."
+		fi
+	else
+		log "Couldnt find the extVersionVariable for $group:$name."
+	fi
+done
+
+for i in "${!transformedDependencies[@]}"; do
+	versions=(${transformedVersions[$i]})
+
+	main "${transformedDependencies[$i]}" "${versions[0]}" "${versions[1]}" "${transformedChangelogs[$i]}" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password" "$reviewers" "$script"
+
+	log "\nSleeping for $SLEEP_DURATION second(s) before continuing..."
 	sleep $SLEEP_DURATION
 done

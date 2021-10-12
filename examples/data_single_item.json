@@ -3,6 +3,7 @@
 		"group": "io.gitlab.arturbosch.detekt",
 		"name": "detekt-formatting",
 		"currentVersion": "1.18.0",
-		"availableVersion": "1.18.1"
+		"availableVersion": "1.18.1",
+		"changelog": "https://github.com/detekt/detekt/releases/tag/v1.18.1"
 	}
 ]
