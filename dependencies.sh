@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 12th October 2021
+# Last modified: 21st October 2021
 # 
 # Processes a json with the format:
 #	[
@@ -41,7 +41,7 @@ function main() {
 
 	prepareBranch "$extVersionVariable" "$toVersion"
 	updateDependenciesFile "$extVersionVariable" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
-	publish "$extVersionVariable" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers" "$changelog" "$script"
+	publish "$extVersionVariable" "$fromVersion" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers" "$changelog" "$script"
 }
 
 function isAlreadyProcessed() {
@@ -144,17 +144,18 @@ function log() {
 
 function publish() {
 	local name="$1"
-	local version="$2"
-	local workspace="$3"
-	local repo="$4"
-	local user="$5"
-	local password="$6"
-	local gradleDependenciesPath="$7"
-	local mainBranch="$8"
-	local reviewers="$9"
-	local changelog="${10}"
-	local script="${11}"
-	local branch="$(id "$name" "$version")"
+	local fromVersion="$2"
+	local toVersion="$3"
+	local workspace="$4"
+	local repo="$5"
+	local user="$6"
+	local password="$7"
+	local gradleDependenciesPath="$8"
+	local mainBranch="$9"
+	local reviewers="${10}"
+	local changelog="${11}"
+	local script="${12}"
+	local branch="$(id "$name" "$toVersion")"
 
 	log "\nCommitting changes..."
 	git add "$gradleDependenciesPath"
@@ -162,10 +163,10 @@ function publish() {
 	if [[ `git status --porcelain` ]]; then
 		if [ -n "$script" ]; then
 			log "\nExecuting post script: '${script}'..."
-		 	$script "$name" "$version"
+			$script "$name" "$fromVersion" "$toVersion"
 		fi
 
-		git commit -m "Update $name to version $version"
+		git commit -m "Update $name to version $toVersion"
 		
 		log "\nPushing changes to remote..."
 		git push "$REMOTE" "$branch"
@@ -179,7 +180,7 @@ function publish() {
 				--request "POST" \
 				--header "Content-Type: application/json" \
 				--data "{ 
-						\"title\": \"Update $name to version $version\",
+						\"title\": \"Update $name to version $toVersion\",
 						\"description\": \"It updates:\n\n$changelog\",
 						\"source\": {
 							\"branch\": {
@@ -214,7 +215,7 @@ function help() {
 	log "\t-u, --user\t The bitbuckets account username"
 	log "\t-p, --password\t The bitbuckets account password"
 	log "\t--reviewers\t The uuid of the reviewers, separated by ',', to add in the PR"
-	log "\t-s, --script\t The path to a shell script to execute after the dependency is updated. It will receive the extVariable name and the new version number as params."
+	log "\t-s, --script\t The path to a shell script to execute after the dependency is updated. It will receive the extVariable name, the current version and the new version number as params."
 	exit 1
 }
 
