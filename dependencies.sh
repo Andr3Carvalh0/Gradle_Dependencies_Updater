@@ -169,7 +169,7 @@ function publish() {
 		git commit -m "Update $name to version $toVersion"
 
 		log "\nPushing changes to remote..."
-		git push "$REMOTE" "$branch"
+		git push --force "$REMOTE" "$branch"
 
 		if [ -z "$workspace" ] || [ -z "$repo" ] || [ -z "$user" ] || [ -z "$password" ]; then
 			log "\nMissing params to be able to open a Pull Request. Skipping it..."
@@ -304,7 +304,6 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 			if [[ "$(differencesBetween "$branch" "$remoteBranch")" != "0" ]]; then
 				log "'$branch' has changed since the update to '$group:$name:$availableVersion'. Processing it again..."
 				git branch -D "$remoteBranch"
-				git push origin --delete "$remoteBranch"
 			else
 				log "PR is already open for '$group:$name:$availableVersion'."
 				continue
