@@ -2,7 +2,7 @@
 #
 # Created by André Carvalho on 10th September 2021
 # Last modified: 29th October 2021
-# 
+#
 # Processes a json with the format:
 #	[
 #		{
@@ -47,7 +47,7 @@ function main() {
 function isAlreadyProcessed() {
 	local branch="$(id "$1" "$2")"
 	local command="$(git ls-remote --exit-code --heads "$REMOTE" "$branch")"
-	
+
 	local hasError="$?"
 
 	if [[ "$hasError" == "0" ]]; then
@@ -167,7 +167,7 @@ function publish() {
 		fi
 
 		git commit -m "Update $name to version $toVersion"
-		
+
 		log "\nPushing changes to remote..."
 		git push "$REMOTE" "$branch"
 
@@ -179,7 +179,7 @@ function publish() {
 				--user "$user:$password" \
 				--request "POST" \
 				--header "Content-Type: application/json" \
-				--data "{ 
+				--data "{
 						\"title\": \"Update $name to version $toVersion\",
 						\"description\": \"It updates:\n\n$changelog\",
 						\"source\": {
@@ -209,7 +209,7 @@ function differencesBetween() {
 	local fromBranch="$1"
 	local toBranch="$2"
 
-	# Returns the amount of changes that both branches add since their split
+	# Returns the amount of changes that both branches had since their split
 	# Eg: Imagining that fromBranch is release and toBranch develop after both being created the output would be 0 0
 	# If I create a commit in develop it becomes 0 1, and if I later commit in release it becomes 1 1
 	local command="$(git rev-list --left-right --count "$REMOTE/$fromBranch"..."$REMOTE/$toBranch")"
@@ -303,6 +303,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 
 			if [[ "$(differencesBetween "$branch" "$remoteBranch")" != "0" ]]; then
 				log "'$branch' has changed since the update to '$group:$name:$availableVersion'. Processing it again..."
+				git branch -D "$remoteBranch"
 				git push origin --delete "$remoteBranch"
 			else
 				log "PR is already open for '$group:$name:$availableVersion'."
