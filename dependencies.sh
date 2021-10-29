@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 21st October 2021
+# Last modified: 29th October 2021
 # 
 # Processes a json with the format:
 #	[
@@ -46,7 +46,7 @@ function main() {
 
 function isAlreadyProcessed() {
 	local branch="$(id "$1" "$2")"
-	git ls-remote --exit-code --heads "$REMOTE" "$branch"
+	local command="$(git ls-remote --exit-code --heads "$REMOTE" "$branch")"
 	
 	local hasError="$?"
 
@@ -71,7 +71,7 @@ function updateDependenciesFile() {
 	local toVersion="$3"
 	local gradleDependenciesPath="$4"
 
-	log "\nUpdating $extVersionVariable from $fromVersion to $toVersion"
+	log "\nUpdating '$extVersionVariable' from '$fromVersion' to '$toVersion'"
 	# The space at the end of "$extVersionVariable " is important here.
 	# It prevents false positives when we have something like:
 	#
@@ -205,6 +205,19 @@ function id() {
 	echo "$BRANCH_PREFIX/$1_$2"
 }
 
+function differencesBetween() {
+	local fromBranch="$1"
+	local toBranch="$2"
+
+	# Returns the amount of changes that both branches add since their split
+	# Eg: Imagining that fromBranch is release and toBranch develop after both being created the output would be 0 0
+	# If I create a commit in develop it becomes 0 1, and if I later commit in release it becomes 1 1
+	local command="$(git rev-list --left-right --count "$REMOTE/$fromBranch"..."$REMOTE/$toBranch")"
+	local diff=( $command )
+
+	echo "${versions[0]}"
+}
+
 function help() {
 	log "Usage: $0 -j json -g dependecies file path"
 	log "\t-j, --json\t The dependencies json content."
@@ -283,25 +296,35 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	log "\nProcessing $group:$name..."
 
 	if [[ "$extVersionVariable" != "-1" ]]; then
-		if [[ "$(isAlreadyProcessed "$versionVariable" "$toVersion")" == "0" ]]; then
-			index=${#transformedDependencies[@]}
-			changelogMd="- [${name}](${changelog})"
+		# If the update already exists. We will check the amount of differences between the source branch and the updated branch.
+		# If the source branch has received an update, we will delete the updated branch and process it again to get the latest changes.
+		if [[ "$(isAlreadyProcessed "$extVersionVariable" "$availableVersion")" == "1" ]]; then
+			remoteBranch="$(id "$extVersionVariable" "$availableVersion")"
 
-			for i in "${!transformedDependencies[@]}"; do
-				if [[ "${transformedDependencies[$i]}" = "${extVersionVariable}" ]]; then
-					index="${i}"
-					changelogMd="${changelogMd}\n${transformedChangelogs[${i}]}"
-				fi
-			done
-
-			transformedDependencies[$index]="${extVersionVariable}"
-			transformedVersions[$index]="${currentVersion} ${availableVersion}"
-			transformedChangelogs[$index]="${changelogMd}"
-		else
-			log "PR is already open for $group:$name:$toVersion."
+			if [[ "$(differencesBetween "$branch" "$remoteBranch")" != "0" ]]; then
+				log "'$branch' has changed since the update to '$group:$name:$availableVersion'. Processing it again..."
+				git push origin --delete "$remoteBranch"
+			else
+				log "PR is already open for '$group:$name:$availableVersion'."
+				continue
+			fi
 		fi
+
+		index=${#transformedDependencies[@]}
+		changelogMd="- [${name}](${changelog})"
+
+		for i in "${!transformedDependencies[@]}"; do
+			if [[ "${transformedDependencies[$i]}" = "${extVersionVariable}" ]]; then
+				index="${i}"
+				changelogMd="${changelogMd}\n${transformedChangelogs[${i}]}"
+			fi
+		done
+
+		transformedDependencies[$index]="${extVersionVariable}"
+		transformedVersions[$index]="${currentVersion} ${availableVersion}"
+		transformedChangelogs[$index]="${changelogMd}"
 	else
-		log "Couldnt find the extVersionVariable for $group:$name."
+		log "Couldnt find the extVersionVariable for '$group:$name'."
 	fi
 done
 
