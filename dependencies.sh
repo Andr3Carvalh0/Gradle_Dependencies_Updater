@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 29th October 2021
+# Last modified: 30th October 2021
 #
 # Processes a json with the format:
 #	[
@@ -37,7 +37,10 @@ function main() {
 	local script="${12}"
 
 	log "\nResetting back to '$mainBranch' branch..."
-	git checkout "${mainBranch}"
+	git checkout --force "${mainBranch}" || {
+		log "Couldnt fetch '$mainBranch'. Please check if '$mainBranch' exists."
+		exit 1
+	}
 
 	prepareBranch "$extVersionVariable" "$toVersion"
 	updateDependenciesFile "$extVersionVariable" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
@@ -303,7 +306,9 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 
 			if [[ "$(differencesBetween "$branch" "$remoteBranch")" != "0" ]]; then
 				log "'$branch' has changed since the update to '$group:$name:$availableVersion'. Processing it again..."
-				git branch -D "$remoteBranch"
+				git branch -D "$remoteBranch" || {
+					log "Failed to delete '$branch' locally. Continuing..."
+				}
 			else
 				log "PR is already open for '$group:$name:$availableVersion'."
 				continue
