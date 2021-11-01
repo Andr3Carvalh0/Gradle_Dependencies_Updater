@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 30th October 2021
+# Last modified: 1st November 2021
 #
 # Processes a json with the format:
 #	[
@@ -35,6 +35,7 @@ function main() {
 	local password="${10}"
 	local reviewers="${11}"
 	local script="${12}"
+	local isUpdate="${13}"
 
 	log "\nResetting back to '$mainBranch' branch..."
 	git checkout --force "${mainBranch}" || {
@@ -44,7 +45,7 @@ function main() {
 
 	prepareBranch "$extVersionVariable" "$toVersion"
 	updateDependenciesFile "$extVersionVariable" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
-	publish "$extVersionVariable" "$fromVersion" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers" "$changelog" "$script"
+	publish "$extVersionVariable" "$fromVersion" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers" "$changelog" "$script" "$isUpdate"
 }
 
 function isAlreadyProcessed() {
@@ -158,6 +159,7 @@ function publish() {
 	local reviewers="${10}"
 	local changelog="${11}"
 	local script="${12}"
+	local isUpdate="${13}"
 	local branch="$(id "$name" "$toVersion")"
 
 	log "\nCommitting changes..."
@@ -176,6 +178,8 @@ function publish() {
 
 		if [ -z "$workspace" ] || [ -z "$repo" ] || [ -z "$user" ] || [ -z "$password" ]; then
 			log "\nMissing params to be able to open a Pull Request. Skipping it..."
+		elif [[ "$isUpdate" == "1" ]]; then
+			log "\nA Pull Request is already opened. Skipping it..."
 		else
 			log "\nOpening a Pull Request..."
 			curl "https://api.bitbucket.org/2.0/repositories/$workspace/$repo/pullrequests" \
@@ -212,13 +216,15 @@ function differencesBetween() {
 	local fromBranch="$1"
 	local toBranch="$2"
 
+	git fetch "$REMOTE" "$toBranch"
+
 	# Returns the amount of changes that both branches had since their split
 	# Eg: Imagining that fromBranch is release and toBranch develop after both being created the output would be 0 0
 	# If I create a commit in develop it becomes 0 1, and if I later commit in release it becomes 1 1
 	local command="$(git rev-list --left-right --count "$REMOTE/$fromBranch"..."$REMOTE/$toBranch")"
 	local diff=( $command )
 
-	echo "${versions[0]}"
+	echo "${diff[0]}"
 }
 
 function help() {
@@ -282,6 +288,7 @@ git fetch "$REMOTE" "$branch"
 transformedDependencies=()
 transformedVersions=()
 transformedChangelogs=()
+isUpdate=()
 
 for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	_jq() {
@@ -299,6 +306,9 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	log "\nProcessing $group:$name..."
 
 	if [[ "$extVersionVariable" != "-1" ]]; then
+		index=${#transformedDependencies[@]}
+		isUpdate[$index]="0"
+
 		# If the update already exists. We will check the amount of differences between the source branch and the updated branch.
 		# If the source branch has received an update, we will delete the updated branch and process it again to get the latest changes.
 		if [[ "$(isAlreadyProcessed "$extVersionVariable" "$availableVersion")" == "1" ]]; then
@@ -307,15 +317,16 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 			if [[ "$(differencesBetween "$branch" "$remoteBranch")" != "0" ]]; then
 				log "'$branch' has changed since the update to '$group:$name:$availableVersion'. Processing it again..."
 				git branch -D "$remoteBranch" || {
-					log "Failed to delete '$branch' locally. Continuing..."
+					log "Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing..."
 				}
+
+				isUpdate[$index]="1"
 			else
 				log "PR is already open for '$group:$name:$availableVersion'."
 				continue
 			fi
 		fi
 
-		index=${#transformedDependencies[@]}
 		changelogMd="- [${name}](${changelog})"
 
 		for i in "${!transformedDependencies[@]}"; do
@@ -336,7 +347,7 @@ done
 for i in "${!transformedDependencies[@]}"; do
 	versions=(${transformedVersions[$i]})
 
-	main "${transformedDependencies[$i]}" "${versions[0]}" "${versions[1]}" "${transformedChangelogs[$i]}" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password" "$reviewers" "$script"
+	main "${transformedDependencies[$i]}" "${versions[0]}" "${versions[1]}" "${transformedChangelogs[$i]}" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password" "$reviewers" "$script" "${isUpdate[$i]}"
 
 	log "\nSleeping for $SLEEP_DURATION second(s) before continuing..."
 	sleep $SLEEP_DURATION
