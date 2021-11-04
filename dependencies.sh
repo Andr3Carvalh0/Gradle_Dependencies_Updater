@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 1st November 2021
+# Last modified: 3rd November 2021
 #
 # Processes a json with the format:
 #	[
@@ -54,11 +54,11 @@ function isAlreadyProcessed() {
 
 	local hasError="$?"
 
-	if [[ "$hasError" == "0" ]]; then
+	if [[ "$hasError" != "0" ]] || [[ -z "$command" ]]; then
+		echo "0"
+	else
 		# The git command didn't return an error which means the branch already exists on the remote
 		echo "1"
-	else
-		echo "0"
 	fi
 }
 
@@ -306,8 +306,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	log "\nProcessing $group:$name..."
 
 	if [[ "$extVersionVariable" != "-1" ]]; then
-		index=${#transformedDependencies[@]}
-		isUpdate[$index]="0"
+		hasAlreadyBeenProcessed="0"
 
 		# If the update already exists. We will check the amount of differences between the source branch and the updated branch.
 		# If the source branch has received an update, we will delete the updated branch and process it again to get the latest changes.
@@ -320,13 +319,14 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 					log "Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing..."
 				}
 
-				isUpdate[$index]="1"
+				hasAlreadyBeenProcessed="1"
 			else
 				log "PR is already open for '$group:$name:$availableVersion'."
 				continue
 			fi
 		fi
 
+		index=${#transformedDependencies[@]}
 		changelogMd="- [${name}](${changelog})"
 
 		for i in "${!transformedDependencies[@]}"; do
@@ -336,9 +336,10 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 			fi
 		done
 
-		transformedDependencies[$index]="${extVersionVariable}"
-		transformedVersions[$index]="${currentVersion} ${availableVersion}"
-		transformedChangelogs[$index]="${changelogMd}"
+		isUpdate[$index]="$hasAlreadyBeenProcessed"
+		transformedDependencies[$index]="$extVersionVariable"
+		transformedVersions[$index]="$currentVersion $availableVersion"
+		transformedChangelogs[$index]="$changelogMd"
 	else
 		log "Couldnt find the extVersionVariable for '$group:$name'."
 	fi
