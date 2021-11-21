@@ -5,6 +5,6 @@ ext {
     ]
     dependencies = [
             kotlin   : "org.jetbrains.kotlin:kotlin-stdlib:${versions.kotlin}",
-            benManes : "com.github.ben-manes.versions:${versions.benManes}"
+            benManes : "com.github.ben-manes:gradle-versions-plugin:${versions.benManes}"
     ]
 }

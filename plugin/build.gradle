@@ -9,6 +9,7 @@ group 'pt.andre'
 version '1.0-SNAPSHOT'
 
 repositories {
+    gradlePluginPortal()
     mavenCentral()
 }
 

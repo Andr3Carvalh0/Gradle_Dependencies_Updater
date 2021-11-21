@@ -9,6 +9,6 @@ class DependabotConfiguration {
     var ignore = setOf<String>()
 
     companion object {
-        const val name = "Dependabot"
+        const val name = "dependabot"
     }
 }
