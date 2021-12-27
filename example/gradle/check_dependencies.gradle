@@ -1,0 +1,152 @@
+class Dependency {
+    String name
+    String group
+    String currentVersion
+    String availableVersion
+    String changelog
+}
+
+def normalizeURL = { String url ->
+    def size = url.length()
+
+    if ("${url.charAt(size - 1)}" == "/") {
+        return url.substring(0, size - 1)
+    } else {
+        return url
+    }
+}
+
+def generateJSON = { Dependency dependency ->
+    return "{" +
+        "\"group\": " + "\"" + dependency.group + "\"," +
+        "\"name\": " + "\"" + dependency.name + "\"," +
+        "\"currentVersion\": " + "\"" + dependency.currentVersion + "\"," +
+        "\"availableVersion\": " + "\"" + dependency.availableVersion + "\"," +
+        "\"changelog\": " + "\"" + dependency.changelog + "\"" +
+        "}"
+}
+
+def dependenciesBlacklist = [
+    // Beta/RC/weird versions
+    (String dependency, String currentVersion, String newVersion) -> {
+        def stableKeywords = ['RELEASE', 'FINAL', 'GA']
+        def versionRegex = /^[0-9,.v-]+(-r)?$/
+
+        def isNewVersionStable = stableKeywords.any { it -> newVersion.toUpperCase().contains(it) } || (newVersion ==~ versionRegex)
+        def isCurrentVersionStable = stableKeywords.any { it -> currentVersion.toUpperCase().contains(it) } || (currentVersion ==~ versionRegex)
+
+        return !(isNewVersionStable || !isNewVersionStable && !isCurrentVersionStable)
+    }
+]
+
+def dependenciesChangelog = [
+    (String url, String version, String group, String name) -> { return url.contains("#") ? url : null },
+    (String url, String version, String group, String name) -> {
+        def library = group.split('\\.')
+        def parsedVersion = version.replace(".", "")
+
+        // Kotlin
+        if (url.contains("https://kotlinlang.org")) { return "https://kotlinlang.org/docs/releases.html#release-details" }
+
+        // Moshi
+        if (group.contains("com.squareup.moshi")) { return "https://github.com/square/moshi/blob/master/CHANGELOG.md" }
+
+        //Espresso & Others
+        if (group.contains("androidx.test") && library.length > 0) {
+            return "https://developer.android.com/jetpack/androidx/releases/test#${library[library.length - 1]}-${version}"
+        }
+
+        // Square libs (OkHttp, etc...)
+        if (url.contains("square.github.io")) { return "$url/changelog/#version-$parsedVersion" }
+        if (url.contains("leakcanary")) { return "https://square.github.io/leakcanary/changelog/" }
+
+        return null
+    },
+    (String url, String version, String group, String name) -> {
+        def versionPrefix = url.contains("accompanist") ? "v" : ""
+        return url.contains("github.com") ? "$url/releases/tag/$versionPrefix$version" : null
+    },
+    (String url, String version, String group, String name) -> { return url }
+]
+
+tasks.named("dependencyUpdates").configure {
+    resolutionStrategy {
+        componentSelection {
+            all { dependency ->
+                def discard = dependenciesBlacklist.stream()
+                    .filter { predicate ->
+                        predicate(
+                            dependency.candidate.group + ":" + dependency.candidate.module,
+                            dependency.currentVersion,
+                            dependency.candidate.version
+                        )
+                    }
+                    .count() > 0
+
+                if (discard) {
+                    reject('The depency version is present in the blacklist filters.')
+                }
+            }
+        }
+    }
+
+    outputFormatter = { result ->
+        def updatable = result.outdated.dependencies
+
+        def outputDirectory = new File("${rootProject.buildDir}/dependencies/")
+        def outputFile = new File(outputDirectory, "report.json")
+        def isAppendMode = outputFile.exists()
+
+        outputDirectory.mkdirs()
+        outputFile.createNewFile()
+
+        if (!updatable.isEmpty()) {
+            def json = ""
+
+            if (!isAppendMode || outputFile.text.size() == 0) {
+                json += "["
+            } else {
+                def previousJson = outputFile.text
+                def suffixChar = previousJson.length() > 2 ? "," : ""
+
+                json += previousJson.substring(0, previousJson.length() - 1) + suffixChar
+            }
+
+            updatable.stream()
+                .map { dependency ->
+                    def version = (dependency.available.release ?: dependency.available.milestone)
+                    def url = normalizeURL(dependency.projectUrl)
+
+                    def changelogPredicate = dependenciesChangelog.stream()
+                        .filter { predicate -> predicate(url, version, dependency.group, dependency.name) != null }
+                        .toArray()[0]
+                    
+                    return new Dependency(
+                        name: dependency.name,
+                        group: dependency.group,
+                        currentVersion: dependency.version,
+                        availableVersion: version,
+                        changelog: changelogPredicate(url, version, dependency.group, dependency.name)
+                    )
+                }
+                .eachWithIndex { dependency, index ->
+                    def generatedJson = generateJSON(dependency)
+
+                    if (!json.contains(generatedJson)) {
+                        json += generatedJson + ","
+                    }
+                }
+
+            if (json.length() > 0 && json.substring(json.length() - 1) == ",") {
+                json = json.substring(0, json.length() - 1)
+            }
+
+            json += "]"
+
+            // We aren't handling duplicates on the output json file.
+            // For the dependencies script thats no problem since we are handling it there.
+            // If you end up using this json for something else take this into account
+            outputFile.write(json.toString())
+        }
+    }
+}

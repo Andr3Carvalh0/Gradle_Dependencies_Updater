@@ -1,0 +1,22 @@
+buildscript {
+    apply from: 'gradle/dependencies.gradle'
+
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath rootProject.ext.dependencies.androidGradlePlugin
+        classpath rootProject.ext.dependencies.koltinGradlePlugin
+    }
+}
+
+
+plugins {
+    id "com.github.ben-manes.versions" version "0.39.0" apply false
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
