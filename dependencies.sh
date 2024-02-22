@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 3rd November 2021
+# Last modified: 19th February 2024
 #
 # Processes a json with the format:
 #	[
@@ -15,27 +15,26 @@
 #		(...)
 #	]
 #
-# And automatically creates a PR for a dependency version update, if needed.
+# And creates a new branch where the dependency is updated.
 #
-BRANCH_PREFIX="dependabot"
-SLEEP_DURATION="1"
-REMOTE="origin"
-DEFAULT_BRANCH="release"
+readonly BRANCH_PREFIX="housechores"
+readonly REMOTE="origin"
+readonly DEFAULT_BRANCH="develop"
+
+readonly NONE="0"
+readonly REBASE="1"
+readonly DESTRUCTIVE="2"
 
 function main() {
 	local extVersionVariable="$1"
 	local fromVersion="$2"
 	local toVersion="$3"
-	local changelog="$4"
-	local gradleDependenciesPath="$5"
-	local mainBranch="$6"
-	local workspace="$7"
-	local repo="$8"
-	local user="$9"
-	local password="${10}"
-	local reviewers="${11}"
-	local script="${12}"
-	local isUpdate="${13}"
+	local releaseNotes="$4"
+	local affectedLibraries="$5"
+	local file="$6"
+	local mainBranch="$7"
+	local callback="$8"
+	local updateMechanism="$9"
 
 	log "\nResetting back to '$mainBranch' branch..."
 	git checkout --force "${mainBranch}" || {
@@ -43,13 +42,21 @@ function main() {
 		exit 1
 	}
 
-	prepareBranch "$extVersionVariable" "$toVersion"
-	updateDependenciesFile "$extVersionVariable" "$fromVersion" "$toVersion" "$gradleDependenciesPath"
-	publish "$extVersionVariable" "$fromVersion" "$toVersion" "$workspace" "$repo" "$user" "$password" "$gradleDependenciesPath" "$mainBranch" "$reviewers" "$changelog" "$script" "$isUpdate"
+	prepareBranch "$extVersionVariable" "$mainBranch" "$updateMechanism"
+	updateDependenciesFile "$extVersionVariable" "$fromVersion" "$toVersion" "$file"
+	publish "$extVersionVariable" "$fromVersion" "$toVersion" "$file" "$mainBranch" "$affectedLibraries" "$releaseNotes" "$callback" "$updateMechanism"
+
+	if [[ "$updateMechanism" == "$REBASE" ]]; then
+		local command="$(git rev-parse --verify REBASE_HEAD)"
+
+		if [[ "$?" != "128" ]]; then
+			git rebase --abort
+		fi
+	fi
 }
 
-function isAlreadyProcessed() {
-	local branch="$(id "$1" "$2")"
+function isVersionUpdateAlreadyProcessed() {
+	local branch="$(id "$1")"
 	local command="$(git ls-remote --exit-code --heads "$REMOTE" "$branch")"
 
 	local hasError="$?"
@@ -63,17 +70,25 @@ function isAlreadyProcessed() {
 }
 
 function prepareBranch() {
-	local branch="$(id "$1" "$2")"
+	local branch="$(id "$1")"
+	local baseBranch="$2"
+	local updateMechanism="$3"
 
 	log "\nPreparing working branch..."
-	git checkout -b "$branch"
+
+	if [[ "$updateMechanism" == "$REBASE" ]]; then
+		git checkout --force "$branch"
+		git rebase "$baseBranch"
+	else
+		git checkout -b "$branch"
+	fi
 }
 
 function updateDependenciesFile() {
 	local extVersionVariable="$1"
 	local fromVersion="$2"
 	local toVersion="$3"
-	local gradleDependenciesPath="$4"
+	local file="$4"
 
 	log "\nUpdating '$extVersionVariable' from '$fromVersion' to '$toVersion'"
 	# The space at the end of "$extVersionVariable " is important here.
@@ -85,25 +100,29 @@ function updateDependenciesFile() {
 	# ...
 	#
 	# And we are updating the compose version, and not the composeNavigation, for example
-	local originalVersion="$(findInFile "$extVersionVariable " "$gradleDependenciesPath")"
+	local originalVersion="$(findInFile "$extVersionVariable " "$file")"
 
 	if [ -z "$originalVersion" ]; then
 		log "Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE"
 	else
-		local newVersion=$(echo "$originalVersion" | sed "s/${fromVersion}/${toVersion}/g")
+		local versionInFile="$(echo "$originalVersion" | awk '{print $NF}')"
+		local versionInFileTransformed="$(echo "${versionInFile//\"}")"
 
-		log "Saving $gradleDependenciesPath file..."
-		echo "$(echo "$(cat "$gradleDependenciesPath")" | sed "s/${originalVersion}/${newVersion}/g")" > "$gradleDependenciesPath"
+		local newVersion=$(echo "$originalVersion" | sed "s/${versionInFileTransformed}/${toVersion}/g")
+
+		log "Saving $file file..."
+		echo "$(echo "$(cat "$file")" | sed "s/${originalVersion}/${newVersion}/g")" > "$file"
 	fi
 }
 
 function findVersionsVariableName() {
 	local group="$1"
 	local name="$2"
-	local gradleDependenciesPath="$3"
-	local dependency="$(findInFile "$group:$name:" "$gradleDependenciesPath")"
+	local file="$3"
+	local dependency="$(findInFile "$group:$name:" "$file")"
 
 	if [ -n "$dependency" ]; then
+		# Handle normal dependencies
 		local versionVariable="$(substring "." "" "$(substring "{" "}" "$dependency")")"
 
 		if [ -n "$versionVariable" ]; then
@@ -112,7 +131,21 @@ function findVersionsVariableName() {
 			echo "-1"
 		fi
 	else
-		echo "-1"
+		# Handle Gradle Plugins versions
+		dependency="$(findInFile "$group" "$file")"
+
+		if [[ -n "$dependency" ]]; then
+			versionVariable="$(substring "." "" "$(substring "version" "" "$dependency")")"
+			local versions=($versionVariable)
+
+			if [ -n "${versions[0]}" ]; then
+				echo "${versions[0]}"
+			else
+				echo "-1"
+			fi
+		else
+			echo "-1"
+		fi
 	fi
 }
 
@@ -136,7 +169,7 @@ function substring() {
 	local text="$3"
 
 	if [ -z "$untilChar" ]; then
-		echo $(echo $text | awk -F "$fromChar" '{ print $2 }')
+		echo $(echo "$text" | awk -F "$fromChar" '{ print $2 }')
 	else
 		echo "$(sed "s/.*${fromChar}\(.*\)${untilChar}.*/\1/" <<< "$text")"
 	fi
@@ -150,69 +183,44 @@ function publish() {
 	local name="$1"
 	local fromVersion="$2"
 	local toVersion="$3"
-	local workspace="$4"
-	local repo="$5"
-	local user="$6"
-	local password="$7"
-	local gradleDependenciesPath="$8"
-	local mainBranch="$9"
-	local reviewers="${10}"
-	local changelog="${11}"
-	local script="${12}"
-	local isUpdate="${13}"
-	local branch="$(id "$name" "$toVersion")"
+	local file="$4"
+	local mainBranch="$5"
+	local affectedLibraries="$6"
+	local releaseNotes="$7"
+	local callback="$8"
+	local updateMechanism="$9"
+	local branch="$(id "$name")"
 
 	log "\nCommitting changes..."
-	git add "$gradleDependenciesPath"
+	git add "$file"
 
 	if [[ `git status --porcelain` ]]; then
-		if [ -n "$script" ]; then
-			log "\nExecuting post script: '${script}'..."
-			$script "$name" "$fromVersion" "$toVersion"
-		fi
-
 		git commit -m "Update $name to version $toVersion"
 
 		log "\nPushing changes to remote..."
 		git push --force "$REMOTE" "$branch"
 
-		if [ -z "$workspace" ] || [ -z "$repo" ] || [ -z "$user" ] || [ -z "$password" ]; then
-			log "\nMissing params to be able to open a Pull Request. Skipping it..."
-		elif [[ "$isUpdate" == "1" ]]; then
-			log "\nA Pull Request is already opened. Skipping it..."
-		else
-			log "\nOpening a Pull Request..."
-			curl "https://api.bitbucket.org/2.0/repositories/$workspace/$repo/pullrequests" \
-				--user "$user:$password" \
-				--request "POST" \
-				--header "Content-Type: application/json" \
-				--data "{
-						\"title\": \"Update $name to version $toVersion\",
-						\"description\": \"It updates:\n\n$changelog\",
-						\"source\": {
-							\"branch\": {
-								\"name\": \"$branch\"
-							}
-						},
-						$reviewers
-						\"destination\": {
-							\"branch\": {
-								\"name\": \"$mainBranch\"
-							}
-						},
-						\"close_source_branch\": true
-					}"
-		fi
+		"$callback" --variable "$name" --fromVersion "$fromVersion" \
+			--toVersion "$toVersion" --modules "$affectedLibraries" \
+			--releaseNotes "$releaseNotes" --sourceBranch "$branch" --targetBranch "$mainBranch"
 	else
-		log "\nNothing to push. Skipping..."
+		if [[ "$updateMechanism" == "$REBASE" ]]; then
+			log "\nPushing changes to remote..."
+			git push --force "$REMOTE" "$branch"
+		else
+			log "\nNothing to push. Skipping..."
+		fi
 	fi
 }
 
 function id() {
-	echo "$BRANCH_PREFIX/$1_$2"
+	local input="$1"
+	local lowercased="$(echo "$(echo "$input" | awk '{print tolower($0)}')")"
+
+	echo "$BRANCH_PREFIX/$lowercased"
 }
 
-function differencesBetween() {
+function differences() {
 	local fromBranch="$1"
 	local toBranch="$2"
 
@@ -221,44 +229,59 @@ function differencesBetween() {
 	# Returns the amount of changes that both branches had since their split
 	# Eg: Imagining that fromBranch is release and toBranch develop after both being created the output would be 0 0
 	# If I create a commit in develop it becomes 0 1, and if I later commit in release it becomes 1 1
-	local command="$(git rev-list --left-right --count "$REMOTE/$fromBranch"..."$REMOTE/$toBranch")"
-	local diff=( $command )
+	echo "$(git rev-list --left-right --count "$REMOTE/$fromBranch"..."$REMOTE/$toBranch")"
+}
 
-	echo "${diff[0]}"
+function hasBaseBranchBeenUpdated() {
+	local metadata="$(differences "$1" "$2")"
+	local diff=( $metadata )
+
+	echo "${diff}"
+}
+
+function hasOpenedBranchBeenUpdated() {
+	local metadata="$(differences "$1" "$2")"
+	local diff=( $metadata )
+
+    if [[ "$((diff[1]))" -ge 2 ]]; then
+        echo "1"
+    else
+        echo "0"
+    fi
 }
 
 function help() {
 	log "Usage: $0 -j json -g dependecies file path"
 	log "\t-j, --json\t The dependencies json content."
-	log "\t-g, --gradleDependenciesPath\t The path for the gradle file where the dependencies are declared"
-	log "\t-b, --branch\t The name of the main git branch"
-	log "\t-w, --workspace\t The repos workspace name"
-	log "\t-r, --repo\t The repos name"
-	log "\t-u, --user\t The bitbuckets account username"
-	log "\t-p, --password\t The bitbuckets account password"
-	log "\t--reviewers\t The uuid of the reviewers, separated by ',', to add in the PR"
-	log "\t-s, --script\t The path to a shell script to execute after the dependency is updated. It will receive the extVariable name, the current version and the new version number as params."
+	log "\t-d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
+	log "\t-v, --versions\t The path to the file where the dependency versions are declared."
+	log "\t-b, --branch\t The name of the main git branch."
+	log "\t-c, --callback\t The path to a shell script that gets called when an update to a dependency is made.\n\t\t\t It gets all the params as key values pairs."
+	log "\n\t\t\t eg: callback --variable \"MOSHI\" --fromVersion \"1.0.0\" --toVersion \"1.0.0\" --modules \"com.squareup.moshi:moshi-kotlin\" --releaseNotes \"https://github.com/square/moshi\" --sourceBranch \"develop\" --targetBranch \"housechores/moshi\""
+	log "\t\t\t\t variable: The version variable name."
+	log "\t\t\t\t fromVersion: The installed library version."
+	log "\t\t\t\t toVersion: The updated library version."
+	log "\t\t\t\t modules: All the affected modules that are affected by updating "\variable"\ separated by a comma (',')."
+	log "\t\t\t\t releaseNotes: The url where you can find all that changed per module. Again values are separated by a comma (',')."
+	log "\t\t\t\t sourceBranch: The base branch we used to process the new changes."
+	log "\t\t\t\t targetBranch: The branch where all the version changes were applied to."
 	exit 1
 }
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 		-j|-json|--json) json="$2" ;;
-		-g|-gradleDependenciesPath|--gradleDependenciesPath) gradleDependenciesPath="$2" ;;
+		-d|-dependencies|--dependencies) IFS=',' read -r -a dependenciesPath <<< "$2" ;;
+		-v|-versions|--versions) versionsPath="$2" ;;
 		-b|-branch|--branch) branch="$2" ;;
-		-w|-workspace|--workspace) workspace="$2" ;;
-		-r|-repo|--repo) repo="$2" ;;
-		-u|-user|--user) user="$2" ;;
-		-p|-password|--password) password="$2" ;;
-		-reviewers|--reviewers) reviewers="$2" ;;
-		-s|-script|--script) script="$2" ;;
+		-c|-callback|--callback) callback="$2" ;;
 	esac
 	shift
 	shift
 done
 
-if [ -z "$json" ] || [ -z "$gradleDependenciesPath" ]; then
-	log "You are missing one of the require params.\n"
+if [ -z "$json" ] || [ -z "$dependenciesPath" ] || [ -z "$versionsPath" ]; then
+	log "You are missing one of the require parameters.\n"
 	help
 fi
 
@@ -266,33 +289,18 @@ if [ -z "$branch" ]; then
 	branch="$DEFAULT_BRANCH"
 fi
 
-if [ -n "$reviewers" ]; then
-	IFS=',' read -r -a reviewersArray <<< "$reviewers"
-
-	reviewers="\"reviewers\": ["
-
-	for index in "${!reviewersArray[@]}"
-	do
-		reviewers="$reviewers{ \"uuid\": \"{${reviewersArray[index]}}\" },"
-	done
-
-	reviewers="${reviewers::${#reviewers}-1}"
-	reviewers="$reviewers],"
-else
-	reviewers=""
-fi
-
 log "Fetching '$branch' branch."
 git fetch "$REMOTE" "$branch"
 
 transformedDependencies=()
 transformedVersions=()
-transformedChangelogs=()
-isUpdate=()
+transformedAffectedLibraries=()
+transformedReleaseNotes=()
+updateMechanism=()
 
 for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	_jq() {
-		echo ${row} | base64 --decode | jq -r ${1}
+		echo "${row}" | base64 --decode | jq -r "${1}"
 	}
 
 	group=$(_jq '.group')
@@ -301,25 +309,39 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	availableVersion=$(_jq '.availableVersion')
 	changelog=$(_jq '.changelog')
 
-	extVersionVariable="$(findVersionsVariableName "$group" "$name" "$gradleDependenciesPath")"
+	for i in "${!dependenciesPath[@]}"; do
+		versionVariable="$(findVersionsVariableName "$group" "$name" "${dependenciesPath[${i}]}")"
+
+		if [[ "$versionVariable" != "-1" ]]; then
+			extVersionVariable="$versionVariable"
+			break
+		fi
+	done
 
 	log "\nProcessing $group:$name..."
 
 	if [[ "$extVersionVariable" != "-1" ]]; then
-		hasAlreadyBeenProcessed="0"
+		mechanism="$NONE"
 
 		# If the update already exists. We will check the amount of differences between the source branch and the updated branch.
 		# If the source branch has received an update, we will delete the updated branch and process it again to get the latest changes.
-		if [[ "$(isAlreadyProcessed "$extVersionVariable" "$availableVersion")" == "1" ]]; then
-			remoteBranch="$(id "$extVersionVariable" "$availableVersion")"
+		if [[ "$(isVersionUpdateAlreadyProcessed "$extVersionVariable")" == "1" ]]; then
+			remoteBranch="$(id "$extVersionVariable")"
 
-			if [[ "$(differencesBetween "$branch" "$remoteBranch")" != "0" ]]; then
-				log "'$branch' has changed since the update to '$group:$name:$availableVersion'. Processing it again..."
-				git branch -D "$remoteBranch" || {
-					log "Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing..."
-				}
+			if [[ "$(hasBaseBranchBeenUpdated "$branch" "$remoteBranch")" != "0" ]]; then
+				log "'$branch' has changed since the update to '$group:$name:$availableVersion'."
 
-				hasAlreadyBeenProcessed="1"
+				if [[ "$(hasOpenedBranchBeenUpdated "$branch" "$remoteBranch")" == "1" ]]; then
+					log "Previous version of the update PR has more work than just the version bump. Trying to rebase it..."
+					mechanism="$REBASE"
+				else
+					log "Previous version of the update PR hasnt changed, destroying it and processing the dependency update again..."
+
+					git branch -D "$remoteBranch" || {
+						log "Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing..."
+					}
+					mechanism="$DESTRUCTIVE"
+				fi
 			else
 				log "PR is already open for '$group:$name:$availableVersion'."
 				continue
@@ -327,29 +349,31 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 		fi
 
 		index=${#transformedDependencies[@]}
-		changelogMd="- [${name}](${changelog})"
+		affectedLibraries="${group}:${name}"
+    	releaseNotes="$changelog"
 
 		for i in "${!transformedDependencies[@]}"; do
 			if [[ "${transformedDependencies[$i]}" = "${extVersionVariable}" ]]; then
 				index="${i}"
-				changelogMd="${changelogMd}\n${transformedChangelogs[${i}]}"
+				affectedLibraries="${affectedLibraries},${transformedAffectedLibraries[${i}]}"
+				releaseNotes="${releaseNotes},${transformedReleaseNotes[${i}]}"
 			fi
 		done
 
-		isUpdate[$index]="$hasAlreadyBeenProcessed"
+		updateMechanism[$index]="$mechanism"
 		transformedDependencies[$index]="$extVersionVariable"
 		transformedVersions[$index]="$currentVersion $availableVersion"
-		transformedChangelogs[$index]="$changelogMd"
+		transformedReleaseNotes[$index]="$releaseNotes"
+		transformedAffectedLibraries[$index]="$affectedLibraries"
 	else
 		log "Couldnt find the extVersionVariable for '$group:$name'."
 	fi
 done
 
 for i in "${!transformedDependencies[@]}"; do
-	versions=(${transformedVersions[$i]})
+	item=(${transformedVersions[$i]})
 
-	main "${transformedDependencies[$i]}" "${versions[0]}" "${versions[1]}" "${transformedChangelogs[$i]}" "$gradleDependenciesPath" "$branch" "$workspace" "$repo" "$user" "$password" "$reviewers" "$script" "${isUpdate[$i]}"
-
-	log "\nSleeping for $SLEEP_DURATION second(s) before continuing..."
-	sleep $SLEEP_DURATION
+	main "${transformedDependencies[$i]}" "${item[0]}" "${item[1]}" "${transformedReleaseNotes[$i]}" "${transformedAffectedLibraries[$i]}" "$versionsPath" "$branch" "$callback" "${updateMechanism[$i]}"
 done
+
+log "All done!"
