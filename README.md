@@ -1,6 +1,6 @@
 # Gradle Dependencies Updater
 
-A shell script that helps you automatically create PRs in bitbucket for every dependecy update that your project might need.
+A shell script that automates your Gradle project dependencies updates.
 
 ## How it all started
 
@@ -159,17 +159,18 @@ While we could have keep using the groovy/Gradle tasks to process the following 
 
 Now, with the previous JSON array, we will iterate every item, and update the version variable value, like previous mentioned. We do have some checks, but the script flow could be better described by the following flow state graph:
 
-<img src="/assets/diagram.png?raw=true" alt="diagram" width="500"/>
+![Diagram](/assets/diagram_dark.png?#gh-dark-mode-only)
+![Diagram](/assets/diagram_light.png?#gh-light-mode-only)
 
 ### A couple of things to note:
 
 - To uniquely identify any version update, we use the version variable name (eg: **coil**) instead of the artifact's id (eg: **io.coil-kt:coil**). The reason for this is because different artifact's could be using the same version variable to track their version. Doing it this way we ensure we will only process/create a single PR for every version update.
 
-- To uniquely identify, if we already processed that version variable update, we check for branches with the following structure: **dependabot/version.variable_newVersion**. For example, with the **coil**, example from before we would check if a branch named **dependabot/coil_1.4.0** exists. If it does, we assume there is a PR opened for it.
+- To uniquely identify, if we already processed that version variable update, we check for branches with the following structure: **dependabot/version.variable**. For example, with the **coil**, example from before we would check if a branch named **dependabot/coil** exists.
 
 ```
-function isAlreadyProcessed() {
-	local branch="$(id "$1" "$2")"
+function isVersionUpdateAlreadyProcessed() {
+	local branch="$(id "$1")"
 	local command="$(git ls-remote --exit-code --heads "$REMOTE" "$branch")"
 
 	local hasError="$?"
@@ -183,10 +184,15 @@ function isAlreadyProcessed() {
 }
 ```
 
-In case an of there already being an update processed, we will compare to check if the dependency update branch is ahead, of **master**. If that's not the case we will reprocess the update on the **master**'s most recent changes.
+If an update branch is available we will compare it with the base branch, and determine if the update branch is behind the base branch.
+
+In the case that it is, we will determine if there was more work done to the update branch, besides the version update...
+
+- If there is, we will try to rebase the base branch into it, so we can keep all the changes. 
+- Otherwise we will just delete the branch and reprocess it again, since thats easier.
 
 ```
-function differencesBetween() {
+function differences() {
 	local fromBranch="$1"
 	local toBranch="$2"
 
@@ -195,10 +201,25 @@ function differencesBetween() {
 	# Returns the amount of changes that both branches had since their split
 	# Eg: Imagining that fromBranch is release and toBranch develop after both being created the output would be 0 0
 	# If I create a commit in develop it becomes 0 1, and if I later commit in release it becomes 1 1
-	local command="$(git rev-list --left-right --count "$REMOTE/$fromBranch"..."$REMOTE/$toBranch")"
-	local diff=( $command )
+	echo "$(git rev-list --left-right --count "$REMOTE/$fromBranch"..."$REMOTE/$toBranch")"
+}
 
-	echo "${diff[0]}"
+function hasBaseBranchBeenUpdated() {
+	local metadata="$(differences "$1" "$2")"
+	local diff=( $metadata )
+
+	echo "${diff}"
+}
+
+function hasOpenedBranchBeenUpdated() {
+	local metadata="$(differences "$1" "$2")"
+	local diff=( $metadata )
+
+    if [[ "$((diff[1]))" -ge 2 ]]; then
+        echo "1"
+    else
+        echo "0"
+    fi
 }
 ```
 
@@ -209,9 +230,22 @@ As you could have read this project is composed of 3 components:
 - 🤖 [If you wanna check all of those in action check the Android project.](./example/)
 - 💻 If you wanna just check the dependabot component... You can use the jsons you find on the `data` folder, and pass them to the `dependencies.sh` script. Like so:
 
-For the script to function you need to at least pass 2 parameters: `--json` were you pass the json with dependencies that need to be updated and `--gradleDependenciesPath` were you pass the path for the file where you declare your gradle dependencies.
+For the script to function you need to at least pass 3 parameters: 
+
+- `--json` were you pass the json with dependencies that need to be updated
+- `--dependencies` were you pass the path for the file where you declare your gradle dependencies.
+- `--versions` were you pass the path for the file where you declare your gradle dependencies versions. It can be the same as `--dependencies`.
 
 eg: 
 ```
-./dependencies.sh --json "`cat ./data/data_with_duplicated.json`" --gradleDependenciesPath "./gradle/dependencies.gradle"
+./dependencies.sh --json "`cat ./data/data_with_duplicated.json`" \
+	--dependencies "./gradle/dependencies.gradle" \
+	--versions "./gradle/dependencies.gradle" 
 ```
+
+## Goodies
+
+I've also included a utilities folder, with some goodies in it 😄
+
+- `ci.sh`: Script for the pipeline. It will generate the `report.json` with all the version updates, and then call the `dependencies.sh` script so all the update branches are created.
+- `make_pull_request`: Script to create a PR in Bitbucket. You can use it on your own, or pass it to the `dependencies.sh`, like the `ci.sh` does.
