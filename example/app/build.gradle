@@ -8,12 +8,13 @@ apply from: rootProject.file('gradle/check_dependencies.gradle')
 apply from: rootProject.file('gradle/dependencies.gradle')
 
 android {
-    compileSdk 31
+    compileSdk 34
 
     defaultConfig {
+        namespace "pt.andre.dependenciesexample"
         applicationId "pt.andre.dependenciesexample"
         minSdk 21
-        targetSdk 31
+        targetSdk 34
         versionCode 1
         versionName "1.0"
 
@@ -35,13 +36,12 @@ android {
     }
     kotlinOptions {
         jvmTarget = '1.8'
-        useIR = true
     }
     buildFeatures {
         compose true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion rootProject.ext.versions.compose
+        kotlinCompilerExtensionVersion rootProject.ext.versions.composeCompiler
         kotlinCompilerVersion rootProject.ext.versions.kotlin
     }
     packagingOptions {
