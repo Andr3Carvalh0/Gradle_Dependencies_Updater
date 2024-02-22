@@ -215,11 +215,11 @@ function hasOpenedBranchBeenUpdated() {
 	local metadata="$(differences "$1" "$2")"
 	local diff=( $metadata )
 
-    if [[ "$((diff[1]))" -ge 2 ]]; then
-        echo "1"
-    else
-        echo "0"
-    fi
+	if [[ "$((diff[1]))" -ge 2 ]]; then
+		echo "1"
+	else
+		echo "0"
+	fi
 }
 ```
 
