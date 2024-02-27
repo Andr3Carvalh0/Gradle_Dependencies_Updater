@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Created by André Carvalho on 19th February 2024
-# Last modified: 22nd February 2024
+# Last modified: 27nd February 2024
 #
 # Creates a pull request in Bitbucket.
 #
@@ -26,7 +26,21 @@ function getReviewers() {
 	echo "$prReviewers"
 }
 
-function getDescription() {
+function getUpdatedLibraries() {
+	local modules="$1"
+
+	IFS=',' read -r -a modulesArray <<< "$modules"
+
+	local result=""
+
+	for i in "${!modulesArray[@]}"; do
+		result="- ${modulesArray[${i}]}\n"
+	done
+
+	echo "$result"
+}
+
+function getChangelogs() {
 	local modules="$1"
 	local releaseNotes="$2"
 
@@ -36,7 +50,10 @@ function getDescription() {
 	local result=""
 
 	for i in "${!modulesArray[@]}"; do
-		result="- [${modulesArray[${i}]}](${notesArray[${i}]})\n"
+		IFS=':' read -ra parts <<< "${modulesArray[${i}]}"
+		local id=$([ "${#parts[@]}" == "1" ] && echo "${modulesArray[${i}]}" || echo "${parts[1]}")
+		
+		result="- [Changelog for $id](${notesArray[${i}]}){: data-inline-card='' } \n"
 	done
 
 	echo "$result"
@@ -55,7 +72,7 @@ function main() {
 	local dependencyPr="$(echo "$openedPrs" | jq '.values' | jq -r --arg title "Update $variable from" -c '.[] | select(.title | contains($title))')"
 
 	local prTitle="Update $variable from version $fromVersion to version $toVersion"
-	local prDescription="This PR updates **$variable** from version **$fromVersion** to **$toVersion**. \n\n### **🔗 Updated libraries:**\n\n$(getDescription "$modules" "$releaseNotes")\n---\n\n🤖 This PR has been created by the [Gradle Dependencies Updater](https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater).\n‌"
+	local prDescription="This PR updates **$variable** from version **$fromVersion** to **$toVersion**. \n\n### **🔗 Updated libraries:**\n\n$(getUpdatedLibraries "$modules") \n\n### **🌍 Changelogs:**\n\n$(getChangelogs "$modules" "$releaseNotes")\n---\n\n🤖 This PR has been created by the [Gradle Dependencies Updater](https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater) script.\n‌"
 
 	if [[ -z "$dependencyPr" ]]; then
 		echo -e "\nOpening a new Pull Request..."
