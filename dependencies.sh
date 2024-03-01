@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 19th February 2024
+# Last modified: 1st March 2024
 #
 # Processes a json with the format:
 #	[
@@ -26,7 +26,7 @@ readonly REBASE="1"
 readonly DESTRUCTIVE="2"
 
 function main() {
-	local extVersionVariable="$1"
+	local declaration="$1"
 	local fromVersion="$2"
 	local toVersion="$3"
 	local releaseNotes="$4"
@@ -35,16 +35,20 @@ function main() {
 	local mainBranch="$7"
 	local callback="$8"
 	local updateMechanism="$9"
+	local isToml="${10}"
+
+	local id=$([ "$isToml" == "true" ] && echo "$(echo "${transformedDependencies[$i]}" | awk -F " " '{ print $1 }')" || echo "${transformedDependencies[$i]}")
 
 	log "\nResetting back to '$mainBranch' branch..."
+	git reset "$file" > /dev/null
 	git checkout --force "${mainBranch}" || {
 		log "Couldnt fetch '$mainBranch'. Please check if '$mainBranch' exists."
 		exit 1
 	}
 
-	prepareBranch "$extVersionVariable" "$mainBranch" "$updateMechanism"
-	updateDependenciesFile "$extVersionVariable" "$fromVersion" "$toVersion" "$file"
-	publish "$extVersionVariable" "$fromVersion" "$toVersion" "$file" "$mainBranch" "$affectedLibraries" "$releaseNotes" "$callback" "$updateMechanism"
+	prepareBranch "$id" "$mainBranch" "$updateMechanism"
+	updateDependenciesFile "$id" "$declaration" "$fromVersion" "$toVersion" "$file" "$isToml"
+	publish "$id" "$fromVersion" "$toVersion" "$file" "$mainBranch" "$affectedLibraries" "$releaseNotes" "$callback" "$updateMechanism"
 
 	if [[ "$updateMechanism" == "$REBASE" ]]; then
 		local command="$(git rev-parse --verify REBASE_HEAD)"
@@ -85,33 +89,44 @@ function prepareBranch() {
 }
 
 function updateDependenciesFile() {
-	local extVersionVariable="$1"
-	local fromVersion="$2"
-	local toVersion="$3"
-	local file="$4"
+	local id="$1"
+	local substring="$2"
+	local fromVersion="$3"
+	local toVersion="$4"
+	local file="$5"
+	local isToml="$6"
 
-	log "\nUpdating '$extVersionVariable' from '$fromVersion' to '$toVersion'"
-	# The space at the end of "$extVersionVariable " is important here.
-	# It prevents false positives when we have something like:
-	#
-	# ...
-	# composeNavigation      : '2.4.0-alpha06',
-	# compose                : '1.0.1',
-	# ...
-	#
-	# And we are updating the compose version, and not the composeNavigation, for example
-	local originalVersion="$(findInFile "$extVersionVariable " "$file")"
-
-	if [ -z "$originalVersion" ]; then
-		log "Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE"
-	else
-		local versionInFile="$(echo "$originalVersion" | awk '{print $NF}')"
-		local versionInFileTransformed="$(echo "${versionInFile//\"}")"
-
-		local newVersion=$(echo "$originalVersion" | sed "s/${versionInFileTransformed}/${toVersion}/g")
+	if [[ "$isToml" == "true" ]]; then
+		log "\nUpdating '$id' from '$fromVersion' to '$toVersion'"
+		local transformedText=${substring/$fromVersion/$toVersion}
 
 		log "Saving $file file..."
-		echo "$(echo "$(cat "$file")" | sed "s/${originalVersion}/${newVersion}/g")" > "$file"
+		echo "$(echo "$(cat "$file")" | sed "s/${substring}/${transformedText}/g")" > "$file"
+	else
+		log "\nUpdating '$substring' from '$fromVersion' to '$toVersion'"
+		# The space at the end of "$substring " is important here.
+		# It prevents false positives when we have something like:
+		#
+		# ...
+		# composeNavigation      : '2.4.0-alpha06',
+		# compose                : '1.0.1',
+		# ...
+		#
+		# And we are updating the compose version, and not the composeNavigation, for example
+		local originalVersion="$(findInFile "$substring " "$file")"
+
+		if [ -z "$originalVersion" ]; then
+			log "Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE"
+		else
+			local versionInFile="$(echo "$originalVersion" | awk '{print $NF}')"
+			local versionInFileTransformed="$(echo "${versionInFile//\"}")"
+
+			local newVersion=$(echo "$originalVersion" | sed "s/${versionInFileTransformed}/${toVersion}/g")
+
+			log "Saving $file file..."
+			echo "$(echo "$(cat "$file")" | sed "s/${originalVersion}/${newVersion}/g")" > "$file"
+		fi
+
 	fi
 }
 
@@ -119,32 +134,49 @@ function findVersionsVariableName() {
 	local group="$1"
 	local name="$2"
 	local file="$3"
-	local dependency="$(findInFile "$group:$name:" "$file")"
+	local isToml="$4"
 
-	if [ -n "$dependency" ]; then
-		# Handle normal dependencies
-		local versionVariable="$(substring "." "" "$(substring "{" "}" "$dependency")")"
+	if [[ "$isToml" == "true" ]]; then
+		local dependency="$(findInFile "module = \"$group:$name\"" "$file")"
 
-		if [ -n "$versionVariable" ]; then
-			echo "$versionVariable"
+		if [ -n "$dependency" ]; then
+			if [[ "$dependency" == *"version.ref = "* ]]; then
+				local extVariable="$(substring "version.ref = \"" "\" }" "$dependency")"
+				echo "$(findInFile "$extVariable = \"" "$file")"
+			else
+				echo "$dependency"
+			fi
 		else
 			echo "-1"
 		fi
 	else
-		# Handle Gradle Plugins versions
-		dependency="$(findInFile "$group" "$file")"
+		local dependency="$(findInFile "$group:$name:" "$file")"
 
-		if [[ -n "$dependency" ]]; then
-			versionVariable="$(substring "." "" "$(substring "version" "" "$dependency")")"
-			local versions=($versionVariable)
+		if [ -n "$dependency" ]; then
+			# Handle normal dependencies
+			local versionVariable="$(substring "." "" "$(substring "{" "}" "$dependency")")"
 
-			if [ -n "${versions[0]}" ]; then
-				echo "${versions[0]}"
+			if [ -n "$versionVariable" ]; then
+				echo "$versionVariable"
 			else
 				echo "-1"
 			fi
 		else
-			echo "-1"
+			# Handle Gradle Plugins versions
+			dependency="$(findInFile "$group" "$file")"
+
+			if [[ -n "$dependency" ]]; then
+				versionVariable="$(substring "." "" "$(substring "version" "" "$dependency")")"
+				local versions=($versionVariable)
+
+				if [ -n "${versions[0]}" ]; then
+					echo "${versions[0]}"
+				else
+					echo "-1"
+				fi
+			else
+				echo "-1"
+			fi
 		fi
 	fi
 }
@@ -250,12 +282,19 @@ function hasOpenedBranchBeenUpdated() {
     fi
 }
 
+function postScript() {
+	exit 0
+}
+
+trap postScript SIGHUP SIGINT SIGQUIT SIGABRT EXIT
+
 function help() {
 	log "Usage: $0 -j json -g dependecies file path"
 	log "\t-j, --json\t The dependencies json content."
 	log "\t-d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
 	log "\t-v, --versions\t The path to the file where the dependency versions are declared."
 	log "\t-b, --branch\t The name of the main git branch."
+	log "\t-t, --is_toml\t Wether or not we are going to process a .toml file"
 	log "\t-c, --callback\t The path to a shell script that gets called when an update to a dependency is made.\n\t\t\t It gets all the params as key values pairs."
 	log "\n\t\t\t eg: callback --variable \"MOSHI\" --fromVersion \"1.0.0\" --toVersion \"1.0.0\" --modules \"com.squareup.moshi:moshi-kotlin\" --releaseNotes \"https://github.com/square/moshi\" --sourceBranch \"develop\" --targetBranch \"housechores/moshi\""
 	log "\t\t\t\t variable: The version variable name."
@@ -275,6 +314,7 @@ while [ $# -gt 0 ]; do
 		-v|-versions|--versions) versionsPath="$2" ;;
 		-b|-branch|--branch) branch="$2" ;;
 		-c|-callback|--callback) callback="$2" ;;
+		-is_toml|--is_toml) isToml="$2" ;;
 	esac
 	shift
 	shift
@@ -310,7 +350,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	changelog=$(_jq '.changelog')
 
 	for i in "${!dependenciesPath[@]}"; do
-		versionVariable="$(findVersionsVariableName "$group" "$name" "${dependenciesPath[${i}]}")"
+		versionVariable="$(findVersionsVariableName "$group" "$name" "${dependenciesPath[${i}]}" "$isToml")"
 
 		if [[ "$versionVariable" != "-1" ]]; then
 			extVersionVariable="$versionVariable"
@@ -373,7 +413,7 @@ done
 for i in "${!transformedDependencies[@]}"; do
 	item=(${transformedVersions[$i]})
 
-	main "${transformedDependencies[$i]}" "${item[0]}" "${item[1]}" "${transformedReleaseNotes[$i]}" "${transformedAffectedLibraries[$i]}" "$versionsPath" "$branch" "$callback" "${updateMechanism[$i]}"
+	if [[ -n "${transformedDependencies[$i]}" ]]; then
+		main "${transformedDependencies[$i]}" "${item[0]}" "${item[1]}" "${transformedReleaseNotes[$i]}" "${transformedAffectedLibraries[$i]}" "$versionsPath" "$branch" "$callback" "${updateMechanism[$i]}" "$isToml"
+	fi
 done
-
-log "All done!"
