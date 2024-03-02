@@ -314,6 +314,13 @@ function help() {
 	exit 1
 }
 
+clear
+
+if ! [[ -x "$(command -v jq)" ]]; then
+	log "${RED}\"jq\" couldnt be found. Please be sure its installed and included in your PATH environment variable!\n${RESET}"
+	exit 1
+fi
+
 while [ $# -gt 0 ]; do
 	case "$1" in
 		-j|-json|--json) json="$2" ;;
@@ -329,8 +336,6 @@ while [ $# -gt 0 ]; do
 done
 
 remoteVersion="$(curl --silent https://api.github.com/repos/Andr3Carvalh0/Gradle_Dependencies_Updater/tags | jq -r '.[0].name')"
-
-clear
 
 if [[ -n "$remoteVersion" && "$remoteVersion" != "$VERSION" ]]; then
     log "${BOLD}\n[i] A new version ($remoteVersion) is available!\n${RESET}"
