@@ -301,12 +301,6 @@ function hasOpenedBranchBeenUpdated() {
     fi
 }
 
-function postScript() {
-	exit 0
-}
-
-trap postScript SIGHUP SIGINT SIGQUIT SIGABRT EXIT
-
 function help() {
 	log "${BOLD}Gradle Dependencies Updater ($VERSION) ${RESET}\n"
 	log "Usage: $0 -j \"{ ... }\" -d \"path to the file where dependencies are declared\" -v \"path to the file where dependencies versions are declared\""
