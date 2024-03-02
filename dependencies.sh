@@ -20,6 +20,11 @@
 readonly BRANCH_PREFIX="housechores"
 readonly REMOTE="origin"
 readonly DEFAULT_BRANCH="develop"
+readonly VERSION="2.1.0"
+
+readonly BOLD='\033[1m'
+readonly RED='\033[0;31m'
+readonly RESET='\033[0m'
 
 readonly NONE="0"
 readonly REBASE="1"
@@ -115,7 +120,7 @@ function updateDependenciesFile() {
 		local originalVersion="$(findInFile "$substring " "$file")"
 
 		if [ -z "$originalVersion" ]; then
-			log "Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE"
+			log "${RED}Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE${RESET}"
 		else
 			local versionInFile="$(echo "$originalVersion" | awk '{print $NF}')"
 			local versionInFileTransformed="$(echo "${versionInFile//\"}")"
@@ -206,6 +211,21 @@ function substring() {
 	fi
 }
 
+function contains() {
+	local array="$1[@]"
+	local item=$2
+	local hasMatch="false"
+
+	for element in "${!array}"; do
+		if [[ $element == "$item" ]]; then
+			hasMatch="true"
+			break
+		fi
+	done
+
+	echo "$hasMatch"
+}
+
 function log() {
 	printf "$1\n"
 }
@@ -281,21 +301,6 @@ function hasOpenedBranchBeenUpdated() {
     fi
 }
 
-function contains() {
-	local array="$1[@]"
-	local item=$2
-	local hasMatch="false"
-
-	for element in "${!array}"; do
-		if [[ $element == "$item" ]]; then
-			hasMatch="true"
-			break
-		fi
-	done
-
-	echo "$hasMatch"
-}
-
 function postScript() {
 	exit 0
 }
@@ -303,22 +308,15 @@ function postScript() {
 trap postScript SIGHUP SIGINT SIGQUIT SIGABRT EXIT
 
 function help() {
-	log "Usage: $0 -j json -g dependecies file path"
-	log "\t-j, --json\t The dependencies json content."
-	log "\t-d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
-	log "\t-v, --versions\t The path to the file where the dependency versions are declared."
-	log "\t-b, --branch\t The name of the main git branch."
-	log "\t-i, --ignore\t All the dependencies ids that should be ignored, separated by comma ','."
-	log "\t-t, --is_toml\t Wether or not we are going to process a .toml file"
-	log "\t-c, --callback\t The path to a shell script that gets called when an update to a dependency is made.\n\t\t\t It gets all the params as key values pairs."
-	log "\n\t\t\t eg: callback --variable \"MOSHI\" --fromVersion \"1.0.0\" --toVersion \"1.0.0\" --modules \"com.squareup.moshi:moshi-kotlin\" --releaseNotes \"https://github.com/square/moshi\" --sourceBranch \"develop\" --targetBranch \"housechores/moshi\""
-	log "\t\t\t\t variable: The version variable name."
-	log "\t\t\t\t fromVersion: The installed library version."
-	log "\t\t\t\t toVersion: The updated library version."
-	log "\t\t\t\t modules: All the affected modules that are affected by updating "\variable"\ separated by a comma (',')."
-	log "\t\t\t\t releaseNotes: The url where you can find all that changed per module. Again values are separated by a comma (',')."
-	log "\t\t\t\t sourceBranch: The base branch we used to process the new changes."
-	log "\t\t\t\t targetBranch: The branch where all the version changes were applied to."
+	log "${BOLD}Gradle Dependencies Updater ($VERSION) ${RESET}\n"
+	log "Usage: $0 -j \"{ ... }\" -d \"path to the file where dependencies are declared\" -v \"path to the file where dependencies versions are declared\""
+	log "    -j, --json        \t The dependencies json content."
+	log "    -d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
+	log "    -v, --versions    \t The path to the file where the dependency versions are declared."
+	log "    -b, --branch      \t The name of the main git branch."
+	log "    -i, --ignore      \t All the dependencies ids that should be ignored, separated by comma ','."
+	log "    -t, --is_toml     \t Wether or not we are going to process a .toml file."
+	log "    -c, --callback    \t The path to a shell script that gets called when an update to a dependency is made. It gets all the params as key values pairs.\n"
 	exit 1
 }
 
@@ -336,8 +334,16 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
+remoteVersion="$(curl --silent https://api.github.com/repos/Andr3Carvalh0/Gradle_Dependencies_Updater/tags | jq -r '.[0].name')"
+
+clear
+
+if [[ -n "$remoteVersion" && "$remoteVersion" != "$VERSION" ]]; then
+    log "${BOLD}\n[i] A new version ($remoteVersion) is available!\n${RESET}"
+fi
+
 if [ -z "$json" ] || [ -z "$dependenciesPath" ] || [ -z "$versionsPath" ]; then
-	log "You are missing one of the require parameters.\n"
+	log "${RED}You are missing one of the require parameters.\n${RESET}"
 	help
 fi
 
@@ -385,7 +391,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 			remoteBranch="$(id "$extVersionVariable")"
 
 			if [[ "$(hasBaseBranchBeenUpdated "$branch" "$remoteBranch")" != "0" ]]; then
-				log "'$branch' has changed since the update to '$group:$name:$availableVersion'."
+				log "'$branch' has changed since the update to '$group:$name:$availableVersion'"
 
 				if [[ "$(hasOpenedBranchBeenUpdated "$branch" "$remoteBranch")" == "1" ]]; then
 					log "Previous version of the update PR has more work than just the version bump. Trying to rebase it..."
@@ -394,7 +400,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 					log "Previous version of the update PR hasnt changed, destroying it and processing the dependency update again..."
 
 					git branch -D "$remoteBranch" || {
-						log "Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing..."
+						log "${RED}Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing...${RESET}"
 					}
 					mechanism="$DESTRUCTIVE"
 				fi
@@ -422,7 +428,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 		transformedReleaseNotes[$index]="$releaseNotes"
 		transformedAffectedLibraries[$index]="$affectedLibraries"
 	else
-		log "Couldnt find the extVersionVariable for '$group:$name'."
+		log "${RED}Couldnt find the extVersionVariable for '$group:$name' ${RESET}"
 	fi
 done
 
@@ -438,6 +444,6 @@ for i in "${!transformedDependencies[@]}"; do
 			log "$shortId is in ignore list. Skipping it..."
 		fi
 	else
-		log "Got invalid variable id for: ${transformedAffectedLibraries[$i]}"
+		log "${RED}Got invalid variable id for: ${transformedAffectedLibraries[$i]}${RESET}"
 	fi
 done
