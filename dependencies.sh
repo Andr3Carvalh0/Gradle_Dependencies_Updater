@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 1st March 2024
+# Last modified: 2nd March 2024
 #
 # Processes a json with the format:
 #	[
@@ -26,18 +26,17 @@ readonly REBASE="1"
 readonly DESTRUCTIVE="2"
 
 function main() {
-	local declaration="$1"
-	local fromVersion="$2"
-	local toVersion="$3"
-	local releaseNotes="$4"
-	local affectedLibraries="$5"
-	local file="$6"
-	local mainBranch="$7"
-	local callback="$8"
-	local updateMechanism="$9"
-	local isToml="${10}"
-
-	local id=$([ "$isToml" == "true" ] && echo "$(echo "${transformedDependencies[$i]}" | awk -F " " '{ print $1 }')" || echo "${transformedDependencies[$i]}")
+	local id="$1"
+	local declaration="$2"
+	local fromVersion="$3"
+	local toVersion="$4"
+	local releaseNotes="$5"
+	local affectedLibraries="$6"
+	local file="$7"
+	local mainBranch="$8"
+	local callback="$9"
+	local updateMechanism="${10}"
+	local isToml="${11}"
 
 	log "\nResetting back to '$mainBranch' branch..."
 	git reset "$file" > /dev/null
@@ -282,6 +281,21 @@ function hasOpenedBranchBeenUpdated() {
     fi
 }
 
+function contains() {
+	local array="$1[@]"
+	local item=$2
+	local hasMatch="false"
+
+	for element in "${!array}"; do
+		if [[ $element == "$item" ]]; then
+			hasMatch="true"
+			break
+		fi
+	done
+
+	echo "$hasMatch"
+}
+
 function postScript() {
 	exit 0
 }
@@ -294,6 +308,7 @@ function help() {
 	log "\t-d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
 	log "\t-v, --versions\t The path to the file where the dependency versions are declared."
 	log "\t-b, --branch\t The name of the main git branch."
+	log "\t-i, --ignore\t All the dependencies ids that should be ignored, separated by comma ','."
 	log "\t-t, --is_toml\t Wether or not we are going to process a .toml file"
 	log "\t-c, --callback\t The path to a shell script that gets called when an update to a dependency is made.\n\t\t\t It gets all the params as key values pairs."
 	log "\n\t\t\t eg: callback --variable \"MOSHI\" --fromVersion \"1.0.0\" --toVersion \"1.0.0\" --modules \"com.squareup.moshi:moshi-kotlin\" --releaseNotes \"https://github.com/square/moshi\" --sourceBranch \"develop\" --targetBranch \"housechores/moshi\""
@@ -313,8 +328,9 @@ while [ $# -gt 0 ]; do
 		-d|-dependencies|--dependencies) IFS=',' read -r -a dependenciesPath <<< "$2" ;;
 		-v|-versions|--versions) versionsPath="$2" ;;
 		-b|-branch|--branch) branch="$2" ;;
+		-i|-ignore|--ignore) IFS=',' read -r -a ignoreItems <<< "$2" ;;
 		-c|-callback|--callback) callback="$2" ;;
-		-is_toml|--is_toml) isToml="$2" ;;
+		-t|-is_toml|--is_toml) isToml="$2" ;;
 	esac
 	shift
 	shift
@@ -411,9 +427,17 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 done
 
 for i in "${!transformedDependencies[@]}"; do
-	item=(${transformedVersions[$i]})
+	versions=(${transformedVersions[$i]})
+	uniqueId="${transformedDependencies[$i]}"
+	shortId=$([ "$isToml" == "true" ] && echo "$(echo "$uniqueId" | awk -F " " '{ print $1 }')" || echo "$uniqueId")
 
-	if [[ -n "${transformedDependencies[$i]}" ]]; then
-		main "${transformedDependencies[$i]}" "${item[0]}" "${item[1]}" "${transformedReleaseNotes[$i]}" "${transformedAffectedLibraries[$i]}" "$versionsPath" "$branch" "$callback" "${updateMechanism[$i]}" "$isToml"
+	if [[ -n "$uniqueId" ]]; then
+		if [[ "$(contains ignoreItems "$shortId")" == "false" ]]; then
+			main "$shortId" "$uniqueId" "${versions[0]}" "${versions[1]}" "${transformedReleaseNotes[$i]}" "${transformedAffectedLibraries[$i]}" "$versionsPath" "$branch" "$callback" "${updateMechanism[$i]}" "$isToml"
+		else
+			log "$shortId is in ignore list. Skipping it..."
+		fi
+	else
+		log "Got invalid variable id for: ${transformedAffectedLibraries[$i]}"
 	fi
 done
