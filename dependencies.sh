@@ -20,7 +20,7 @@
 readonly BRANCH_PREFIX="housechores"
 readonly REMOTE="origin"
 readonly DEFAULT_BRANCH="develop"
-readonly VERSION="2.1.0"
+readonly VERSION="2.1.1"
 
 readonly BOLD='\033[1m'
 readonly RED='\033[0;31m'
@@ -58,7 +58,7 @@ function main() {
 		local command="$(git rev-parse --verify REBASE_HEAD)"
 
 		if [[ "$?" != "128" ]]; then
-			git rebase --abort
+			git rebase --abort &> /dev/null
 		fi
 	fi
 }
@@ -70,10 +70,10 @@ function isVersionUpdateAlreadyProcessed() {
 	local hasError="$?"
 
 	if [[ "$hasError" != "0" ]] || [[ -z "$command" ]]; then
-		echo "0"
+		echo "false"
 	else
 		# The git command didn't return an error which means the branch already exists on the remote
-		echo "1"
+		echo "true"
 	fi
 }
 
@@ -287,7 +287,11 @@ function hasBaseBranchBeenUpdated() {
 	local metadata="$(differences "$1" "$2")"
 	local diff=( $metadata )
 
-	echo "${diff}"
+	if [[ "$diff" != "0" ]]; then
+		echo "true"
+	else
+		echo "false"
+	fi
 }
 
 function hasOpenedBranchBeenUpdated() {
@@ -295,9 +299,9 @@ function hasOpenedBranchBeenUpdated() {
 	local diff=( $metadata )
 
     if [[ "$((diff[1]))" -ge 2 ]]; then
-        echo "1"
+        echo "true"
     else
-        echo "0"
+        echo "false"
     fi
 }
 
@@ -386,10 +390,10 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 
 		# If the update already exists. We will check the amount of differences between the source branch and the updated branch.
 		# If the source branch has received an update, we will delete the updated branch and process it again to get the latest changes.
-		if [[ "$(isVersionUpdateAlreadyProcessed "$extVersionVariable")" == "1" ]]; then
+		if [[ "$(isVersionUpdateAlreadyProcessed "$extVersionVariable")" == "true" ]]; then
 			remoteBranch="$(id "$extVersionVariable")"
 
-			if [[ "$(hasBaseBranchBeenUpdated "$branch" "$remoteBranch")" != "0" ]]; then
+			if [[ "$(hasBaseBranchBeenUpdated "$branch" "$remoteBranch")" == "true" ]]; then
 				log "'$branch' has changed since the update to '$group:$name:$availableVersion'"
 
 				if [[ "$(hasOpenedBranchBeenUpdated "$branch" "$remoteBranch")" == "1" ]]; then
