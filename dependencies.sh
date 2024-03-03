@@ -298,11 +298,11 @@ function hasOpenedBranchBeenUpdated() {
 	local metadata="$(differences "$1" "$2")"
 	local diff=( $metadata )
 
-    if [[ "$((diff[1]))" -ge 2 ]]; then
-        echo "true"
-    else
-        echo "false"
-    fi
+	if [[ "$((diff[1]))" -ge 2 ]]; then
+		echo "true"
+	else
+		echo "false"
+	fi
 }
 
 function booleanInput() {
@@ -352,7 +352,7 @@ done
 remoteVersion="$(curl --silent https://api.github.com/repos/Andr3Carvalh0/Gradle_Dependencies_Updater/tags | jq -r '.[0].name')"
 
 if [[ -n "$remoteVersion" && "$remoteVersion" != "$VERSION" ]]; then
-    log "${BOLD}\n[i] A new version ($remoteVersion) is available!\n[i] You can download it at https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater${RESET}\n"
+	log "${BOLD}\n[i] A new version ($remoteVersion) is available!\n[i] You can download it at https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater${RESET}\n"
 fi
 
 if [ -z "$json" ] || [ -z "$dependenciesPath" ] || [ -z "$versionsPath" ]; then
@@ -433,7 +433,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 
 		index=${#transformedDependencies[@]}
 		affectedLibraries="${group}:${name}"
-    	releaseNotes="$changelog"
+		releaseNotes="$changelog"
 
 		for i in "${!transformedDependencies[@]}"; do
 			if [[ "${transformedDependencies[$i]}" = "$processingVersionVariable" ]]; then
