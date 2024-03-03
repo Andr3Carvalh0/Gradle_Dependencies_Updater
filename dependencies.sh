@@ -20,7 +20,7 @@
 readonly BRANCH_PREFIX="housechores"
 readonly REMOTE="origin"
 readonly DEFAULT_BRANCH="develop"
-readonly VERSION="2.1.1"
+readonly VERSION="2.1.2"
 
 readonly BOLD='\033[1m'
 readonly RED='\033[0;31m'
@@ -60,6 +60,8 @@ function main() {
 		if [[ "$?" != "128" ]]; then
 			git rebase --abort &> /dev/null
 		fi
+
+		log "\nRebase completed!"
 	fi
 }
 
@@ -421,7 +423,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 					log "Previous version of the update branch hasnt changed, destroying it and processing the dependency update again..."
 
 					git branch -D "$remoteBranch" || {
-						log "${RED}Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing...${RESET}"
+						log "[i] Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing..."
 					}
 					mechanism="$DESTRUCTIVE"
 				fi
