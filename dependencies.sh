@@ -24,6 +24,7 @@ readonly VERSION="2.1.2"
 
 readonly BOLD='\033[1m'
 readonly RED='\033[0;31m'
+readonly GREEN='\u001b[32m'
 readonly RESET='\033[0m'
 
 readonly NONE="0"
@@ -43,10 +44,10 @@ function main() {
 	local updateMechanism="${10}"
 	local toml="${11}"
 
-	log "\nResetting back to '$mainBranch' branch..."
+	echo -e "\nResetting back to '$mainBranch' branch..."
 	git reset "$file" > /dev/null
 	git checkout --force "${mainBranch}" || {
-		log "${RED}Couldn't fetch '$mainBranch'. Please check if '$mainBranch' exists.${RESET}"
+		echo -e "${RED}Couldn't fetch '$mainBranch'. Please check if '$mainBranch' exists.${RESET}"
 		exit 1
 	}
 
@@ -60,9 +61,9 @@ function main() {
 		if [[ "$?" != "128" ]]; then
 			git rebase --abort &> /dev/null
 		fi
-
-		log "\nRebase completed!"
 	fi
+
+	echo -e "\n${GREEN}Done processing $id${RESET}"
 }
 
 function isVersionUpdateAlreadyProcessed() {
@@ -84,7 +85,7 @@ function prepareBranch() {
 	local baseBranch="$2"
 	local updateMechanism="$3"
 
-	log "\nPreparing working branch ($branch)..."
+	echo -e "\nPreparing working branch ($branch)..."
 
 	if [[ "$updateMechanism" == "$REBASE" ]]; then
 		git checkout --force "$branch"
@@ -103,13 +104,13 @@ function updateDependenciesFile() {
 	local toml="$6"
 
 	if [[ "$toml" == "true" ]]; then
-		log "\nUpdating '$id' from '$fromVersion' to '$toVersion'"
+		echo -e "\nUpdating '$id' from '$fromVersion' to '$toVersion'"
 		local transformedText=${substring/$fromVersion/$toVersion}
 
-		log "Saving $file file..."
+		echo -e "Saving $file file..."
 		echo "$(echo "$(cat "$file")" | sed "s/${substring}/${transformedText}/g")" > "$file"
 	else
-		log "\nUpdating '$substring' from '$fromVersion' to '$toVersion'"
+		echo -e "\nUpdating '$substring' from '$fromVersion' to '$toVersion'"
 		# The space at the end of "$substring " is important here.
 		# It prevents false positives when we have something like:
 		#
@@ -122,17 +123,16 @@ function updateDependenciesFile() {
 		local originalVersion="$(findInFile "$substring " "$file")"
 
 		if [ -z "$originalVersion" ]; then
-			log "${RED}Couldn't find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE${RESET}"
+			echo -e "${RED}Couldn't find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE${RESET}"
 		else
 			local versionInFile="$(echo "$originalVersion" | awk '{print $NF}')"
 			local versionInFileTransformed="$(echo "${versionInFile//\"}")"
 
 			local newVersion=$(echo "$originalVersion" | sed "s/${versionInFileTransformed}/${toVersion}/g")
 
-			log "Saving $file file..."
+			echo -e "Saving $file file..."
 			echo "$(echo "$(cat "$file")" | sed "s/${originalVersion}/${newVersion}/g")" > "$file"
 		fi
-
 	fi
 }
 
@@ -228,10 +228,6 @@ function contains() {
 	echo "$hasMatch"
 }
 
-function log() {
-	printf "$1\n"
-}
-
 function publish() {
 	local name="$1"
 	local fromVersion="$2"
@@ -244,13 +240,13 @@ function publish() {
 	local updateMechanism="$9"
 	local branch="$(id "$name")"
 
-	log "\nCommitting changes..."
+	echo -e "\nCommitting changes..."
 	git add "$file"
 
-	if [[ `git status --porcelain` ]]; then
+	if [[ $(git status --porcelain) ]]; then
 		git commit -m "Update $name to version $toVersion"
 
-		log "\nPushing changes to remote..."
+		echo -e "Pushing changes to remote..."
 		git push --force "$REMOTE" "$branch"
 
 		"$callback" --variable "$name" --fromVersion "$fromVersion" \
@@ -258,10 +254,10 @@ function publish() {
 			--releaseNotes "$releaseNotes" --sourceBranch "$branch" --targetBranch "$mainBranch"
 	else
 		if [[ "$updateMechanism" == "$REBASE" ]]; then
-			log "\nPushing changes to remote..."
+			echo -e "Pushing changes to remote..."
 			git push --force "$REMOTE" "$branch"
 		else
-			log "\nNothing to push. Skipping it..."
+			echo -e "Nothing to push. Skipping it..."
 		fi
 	fi
 }
@@ -310,7 +306,7 @@ function hasOpenedBranchBeenUpdated() {
 function booleanInput() {
 	local param="$1"
 
-	if [[ "$param" == [tT] || "$param" == [tT][rR][uU][eE] || "$param" == "1" ]]; then
+	if [[ "$param" == [tT] || "$param" == [tT][rR][uU][eE] || "$param" == "1" || "$param" == [yY] || "$param" == [yY][eE][sS] ]]; then
 		echo "true"
 	else
 		echo "false"
@@ -318,22 +314,22 @@ function booleanInput() {
 }
 
 function help() {
-	log "${BOLD}Gradle Dependencies Updater ($VERSION) developed by André Carvalho${RESET}\n"
-	log "Usage: $0 -j \"{ ... }\" -d \"path(s) to the file(s) where the dependencies are declared\" -v \"path to the file where the dependencies versions are declared\""
-	log "    -j, --json        \t The dependencies json content."
-	log "    -d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
-	log "    -v, --versions    \t The path to the file where the dependency versions are declared."
-	log "    -b, --branch      \t The name of the main git branch."
-	log "    -i, --ignore      \t All the dependencies ids that should be ignored, separated by comma ','."
-	log "    -r, --rebase      \t Wether or not to rebase an already processed dependencies updates."
-	log "    -c, --callback    \t The path to a shell script that gets called when an update to a dependency is made. It gets all the params as key values pairs.\n"
+	echo -e "${BOLD}Gradle Dependencies Updater ($VERSION) developed by André Carvalho${RESET}\n"
+	echo -e "Usage: $0 -j \"{ ... }\" -d \"path(s) to the file(s) where the dependencies are declared\" -v \"path to the file where the dependencies versions are declared\""
+	echo -e "    -j, --json        \t The dependencies json content."
+	echo -e "    -d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
+	echo -e "    -v, --versions    \t The path to the file where the dependency versions are declared."
+	echo -e "    -b, --branch      \t The name of the main git branch."
+	echo -e "    -i, --ignore      \t All the dependencies ids that should be ignored, separated by comma ','."
+	echo -e "    -r, --rebase      \t Wether or not to rebase an already processed dependencies updates."
+	echo -e "    -c, --callback    \t The path to a shell script that gets called when an update to a dependency is made. It gets all the params as key values pairs.\n"
 	exit 1
 }
 
 clear
 
 if ! [[ -x "$(command -v jq)" ]]; then
-	log "${RED}\"jq\" couldn't be found. Please be sure it's installed and included in your PATH environment variable!\n${RESET}"
+	echo -e "${RED}\"jq\" couldn't be found. Please be sure it's installed and included in your PATH environment variable!\n${RESET}"
 	exit 1
 fi
 
@@ -354,11 +350,11 @@ done
 remoteVersion="$(curl --silent https://api.github.com/repos/Andr3Carvalh0/Gradle_Dependencies_Updater/tags | jq -r '.[0].name')"
 
 if [[ -n "$remoteVersion" && "$remoteVersion" != "$VERSION" ]]; then
-	log "${BOLD}\n[i] A new version ($remoteVersion) is available!\n[i] You can download it at https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater${RESET}\n"
+	echo -e "${BOLD}\n[i] A new version ($remoteVersion) is available!\n[i] You can download it at https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater${RESET}\n"
 fi
 
 if [ -z "$json" ] || [ -z "$dependenciesPath" ] || [ -z "$versionsPath" ]; then
-	log "${RED}You are missing one of the require parameters.\n${RESET}"
+	echo -e "${RED}You are missing one of the require parameters.\n${RESET}"
 	help
 fi
 
@@ -366,7 +362,7 @@ if [ -z "$branch" ]; then
 	branch="$DEFAULT_BRANCH"
 fi
 
-log "Fetching '$branch' branch."
+echo -e "Fetching '$branch' branch."
 git fetch "$REMOTE" "$branch"
 
 transformedDependencies=()
@@ -375,7 +371,7 @@ transformedAffectedLibraries=()
 transformedReleaseNotes=()
 updateMechanism=()
 shortIds=()
-toml=$([ "$dependenciesPath" == *".toml"* ] && echo "true" || echo "false")
+toml=$([[ "$dependenciesPath" == *".toml"* ]] && echo "true" || echo "false")
 
 for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	_jq() {
@@ -397,38 +393,38 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 		fi
 	done
 
-	log "\nProcessing $group:$name..."
+	echo -e "Processing $group:$name..."
 
 	if [[ "$processingVersionVariable" != "-1" ]]; then
-		shortId=$([ "$toml" == "true" ] && echo "$(echo "$processingVersionVariable" | awk -F " " '{ print $1 }')" || echo "$processingVersionVariable")
+		shortId=$([[ "$toml" == "true" ]] && "$(echo "$processingVersionVariable" | awk -F " " '{ print $1 }')" || echo "$processingVersionVariable")
 		mechanism="$NONE"
 
 		# If the update already exists. We will check the amount of differences between the source branch and the updated branch.
 		# If the source branch has received an update, we will delete the updated branch and process it again to get the latest changes.
 		if [[ "$(isVersionUpdateAlreadyProcessed "$shortId")" == "true" ]]; then
 			if [[ "$reprocess" == "false" ]]; then
-				log "'$group:$name:$availableVersion' was processed before and rebasing is disabled. Skipping it..."
+				echo -e "'$group:$name:$availableVersion' was processed before and rebasing is disabled. Skipping it..."
 				continue
 			fi
 
 			remoteBranch="$(id "$shortId")"
 
 			if [[ "$(hasBaseBranchBeenUpdated "$branch" "$remoteBranch")" == "true" ]]; then
-				log "'$branch' has changed since the update to '$group:$name:$availableVersion'"
+				echo -e "'$branch' has changed since the update to '$group:$name:$availableVersion'"
 
 				if [[ "$(hasOpenedBranchBeenUpdated "$branch" "$remoteBranch")" == "true" ]]; then
-					log "Previous version of the update branch has more work than just the version bump. Trying to rebase it..."
+					echo -e "Previous version of the update branch has more work than just the version bump. Trying to rebase it..."
 					mechanism="$REBASE"
 				else
-					log "Previous version of the update branch hasnt changed, destroying it and processing the dependency update again..."
+					echo -e "Previous version of the update branch hasn't changed, destroying it and processing the dependency update again..."
 
 					git branch -D "$remoteBranch" || {
-						log "[i] Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing..."
+						echo -e "[i] Failed to delete '$remoteBranch' locally, probably because it doesn't exist. Continuing..."
 					}
 					mechanism="$DESTRUCTIVE"
 				fi
 			else
-				log "An updated branch for '$group:$name:$availableVersion' is already available! Skipping it..."
+				echo -e "An updated branch for '$group:$name:$availableVersion' is already available! Skipping it..."
 				continue
 			fi
 		fi
@@ -439,20 +435,20 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 
 		for i in "${!transformedDependencies[@]}"; do
 			if [[ "${transformedDependencies[$i]}" = "$processingVersionVariable" ]]; then
-				index="${i}"
-				affectedLibraries="${affectedLibraries},${transformedAffectedLibraries[${i}]}"
-				releaseNotes="${releaseNotes},${transformedReleaseNotes[${i}]}"
+				index="$i"
+				affectedLibraries="${affectedLibraries},${transformedAffectedLibraries[$i]}"
+				releaseNotes="${releaseNotes},${transformedReleaseNotes[$i]}"
 			fi
 		done
 
-		shortIds[$index]="$shortId"
-		updateMechanism[$index]="$mechanism"
-		transformedDependencies[$index]="$processingVersionVariable"
-		transformedVersions[$index]="$currentVersion $availableVersion"
-		transformedReleaseNotes[$index]="$releaseNotes"
-		transformedAffectedLibraries[$index]="$affectedLibraries"
+		shortIds[index]="$shortId"
+		updateMechanism[index]="$mechanism"
+		transformedDependencies[index]="$processingVersionVariable"
+		transformedVersions[index]="$currentVersion $availableVersion"
+		transformedReleaseNotes[index]="$releaseNotes"
+		transformedAffectedLibraries[index]="$affectedLibraries"
 	else
-		log "${RED}Couldn't find the version variable for '$group:$name' ${RESET}"
+		echo -e "${RED}Couldn't find the version variable for '$group:$name' ${RESET}"
 	fi
 done
 
@@ -465,9 +461,9 @@ for i in "${!transformedDependencies[@]}"; do
 		if [[ "$(contains ignoreItems "$shortId")" == "false" ]]; then
 			main "$shortId" "$uniqueId" "${versions[0]}" "${versions[1]}" "${transformedReleaseNotes[$i]}" "${transformedAffectedLibraries[$i]}" "$versionsPath" "$branch" "$callback" "${updateMechanism[$i]}" "$toml"
 		else
-			log "$shortId is in ignore list. Skipping it..."
+			echo -e "$shortId is in ignore list. Skipping it..."
 		fi
 	else
-		log "${RED}Got invalid variable id for: ${transformedAffectedLibraries[$i]}${RESET}"
+		echo -e "${RED}Got invalid variable id for: ${transformedAffectedLibraries[$i]}${RESET}"
 	fi
 done
