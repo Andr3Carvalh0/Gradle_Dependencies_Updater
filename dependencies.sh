@@ -414,7 +414,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 			if [[ "$(hasBaseBranchBeenUpdated "$branch" "$remoteBranch")" == "true" ]]; then
 				log "'$branch' has changed since the update to '$group:$name:$availableVersion'"
 
-				if [[ "$(hasOpenedBranchBeenUpdated "$branch" "$remoteBranch")" == "1" ]]; then
+				if [[ "$(hasOpenedBranchBeenUpdated "$branch" "$remoteBranch")" == "true" ]]; then
 					log "Previous version of the update branch has more work than just the version bump. Trying to rebase it..."
 					mechanism="$REBASE"
 				else
