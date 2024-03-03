@@ -41,7 +41,7 @@ function main() {
 	local mainBranch="$8"
 	local callback="$9"
 	local updateMechanism="${10}"
-	local isToml="${11}"
+	local toml="${11}"
 
 	log "\nResetting back to '$mainBranch' branch..."
 	git reset "$file" > /dev/null
@@ -51,7 +51,7 @@ function main() {
 	}
 
 	prepareBranch "$id" "$mainBranch" "$updateMechanism"
-	updateDependenciesFile "$id" "$declaration" "$fromVersion" "$toVersion" "$file" "$isToml"
+	updateDependenciesFile "$id" "$declaration" "$fromVersion" "$toVersion" "$file" "$toml"
 	publish "$id" "$fromVersion" "$toVersion" "$file" "$mainBranch" "$affectedLibraries" "$releaseNotes" "$callback" "$updateMechanism"
 
 	if [[ "$updateMechanism" == "$REBASE" ]]; then
@@ -98,9 +98,9 @@ function updateDependenciesFile() {
 	local fromVersion="$3"
 	local toVersion="$4"
 	local file="$5"
-	local isToml="$6"
+	local toml="$6"
 
-	if [[ "$isToml" == "true" ]]; then
+	if [[ "$toml" == "true" ]]; then
 		log "\nUpdating '$id' from '$fromVersion' to '$toVersion'"
 		local transformedText=${substring/$fromVersion/$toVersion}
 
@@ -138,9 +138,9 @@ function findVersionsVariableName() {
 	local group="$1"
 	local name="$2"
 	local file="$3"
-	local isToml="$4"
+	local toml="$4"
 
-	if [[ "$isToml" == "true" ]]; then
+	if [[ "$toml" == "true" ]]; then
 		local dependency="$(findInFile "module = \"$group:$name\"" "$file")"
 
 		if [ -n "$dependency" ]; then
@@ -305,15 +305,25 @@ function hasOpenedBranchBeenUpdated() {
     fi
 }
 
+function booleanInput() {
+	local param="$1"
+
+	if [[ "$param" == [tT] || "$param" == [tT][rR][uU][eE] || "$param" == "1" ]]; then
+		echo "true"
+	else
+		echo "false"
+	fi
+}
+
 function help() {
-	log "${BOLD}Gradle Dependencies Updater ($VERSION) ${RESET}\n"
+	log "${BOLD}Gradle Dependencies Updater ($VERSION) developed by André Carvalho${RESET}\n"
 	log "Usage: $0 -j \"{ ... }\" -d \"path to the file where dependencies are declared\" -v \"path to the file where dependencies versions are declared\""
 	log "    -j, --json        \t The dependencies json content."
 	log "    -d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
 	log "    -v, --versions    \t The path to the file where the dependency versions are declared."
 	log "    -b, --branch      \t The name of the main git branch."
 	log "    -i, --ignore      \t All the dependencies ids that should be ignored, separated by comma ','."
-	log "    -t, --is_toml     \t Wether or not we are going to process a .toml file."
+	log "    -r, --rebase      \t Wether or not to rebase already processed dependencies updates."
 	log "    -c, --callback    \t The path to a shell script that gets called when an update to a dependency is made. It gets all the params as key values pairs.\n"
 	exit 1
 }
@@ -332,8 +342,8 @@ while [ $# -gt 0 ]; do
 		-v|-versions|--versions) versionsPath="$2" ;;
 		-b|-branch|--branch) branch="$2" ;;
 		-i|-ignore|--ignore) IFS=',' read -r -a ignoreItems <<< "$2" ;;
+		-r|-rebase|--rebase) reprocess="$(booleanInput "$2")" ;;
 		-c|-callback|--callback) callback="$2" ;;
-		-t|-is_toml|--is_toml) isToml="$2" ;;
 	esac
 	shift
 	shift
@@ -342,7 +352,7 @@ done
 remoteVersion="$(curl --silent https://api.github.com/repos/Andr3Carvalh0/Gradle_Dependencies_Updater/tags | jq -r '.[0].name')"
 
 if [[ -n "$remoteVersion" && "$remoteVersion" != "$VERSION" ]]; then
-    log "${BOLD}\n[i] A new version ($remoteVersion) is available!\n${RESET}"
+    log "${BOLD}\n[i] A new version ($remoteVersion) is available!\n[i] You can download it at https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater${RESET}\n"
 fi
 
 if [ -z "$json" ] || [ -z "$dependenciesPath" ] || [ -z "$versionsPath" ]; then
@@ -362,6 +372,8 @@ transformedVersions=()
 transformedAffectedLibraries=()
 transformedReleaseNotes=()
 updateMechanism=()
+shortIds=()
+toml=$([ "$dependenciesPath" == *".toml"* ] && echo "true" || echo "false")
 
 for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	_jq() {
@@ -375,32 +387,38 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	changelog=$(_jq '.changelog')
 
 	for i in "${!dependenciesPath[@]}"; do
-		versionVariable="$(findVersionsVariableName "$group" "$name" "${dependenciesPath[${i}]}" "$isToml")"
+		versionVariable="$(findVersionsVariableName "$group" "$name" "${dependenciesPath[${i}]}" "$toml")"
 
 		if [[ "$versionVariable" != "-1" ]]; then
-			extVersionVariable="$versionVariable"
+			processingVersionVariable="$versionVariable"
 			break
 		fi
 	done
 
 	log "\nProcessing $group:$name..."
 
-	if [[ "$extVersionVariable" != "-1" ]]; then
+	if [[ "$processingVersionVariable" != "-1" ]]; then
+		shortId=$([ "$toml" == "true" ] && echo "$(echo "$processingVersionVariable" | awk -F " " '{ print $1 }')" || echo "$processingVersionVariable")
 		mechanism="$NONE"
 
 		# If the update already exists. We will check the amount of differences between the source branch and the updated branch.
 		# If the source branch has received an update, we will delete the updated branch and process it again to get the latest changes.
-		if [[ "$(isVersionUpdateAlreadyProcessed "$extVersionVariable")" == "true" ]]; then
-			remoteBranch="$(id "$extVersionVariable")"
+		if [[ "$(isVersionUpdateAlreadyProcessed "$shortId")" == "true" ]]; then
+			if [[ "$reprocess" == "false" ]]; then
+				log "'$group:$name:$availableVersion' was processed before and rebasing it disabled. Skipping it..."
+				continue
+			fi
+
+			remoteBranch="$(id "$shortId")"
 
 			if [[ "$(hasBaseBranchBeenUpdated "$branch" "$remoteBranch")" == "true" ]]; then
 				log "'$branch' has changed since the update to '$group:$name:$availableVersion'"
 
 				if [[ "$(hasOpenedBranchBeenUpdated "$branch" "$remoteBranch")" == "1" ]]; then
-					log "Previous version of the update PR has more work than just the version bump. Trying to rebase it..."
+					log "Previous version of the update branch has more work than just the version bump. Trying to rebase it..."
 					mechanism="$REBASE"
 				else
-					log "Previous version of the update PR hasnt changed, destroying it and processing the dependency update again..."
+					log "Previous version of the update branch hasnt changed, destroying it and processing the dependency update again..."
 
 					git branch -D "$remoteBranch" || {
 						log "${RED}Failed to delete '$remoteBranch' locally, probably because it doesnt exist. Continuing...${RESET}"
@@ -408,7 +426,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 					mechanism="$DESTRUCTIVE"
 				fi
 			else
-				log "PR is already open for '$group:$name:$availableVersion'."
+				log "An updated branch for '$group:$name:$availableVersion' is already available! Skipping it..."
 				continue
 			fi
 		fi
@@ -418,31 +436,32 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
     	releaseNotes="$changelog"
 
 		for i in "${!transformedDependencies[@]}"; do
-			if [[ "${transformedDependencies[$i]}" = "${extVersionVariable}" ]]; then
+			if [[ "${transformedDependencies[$i]}" = "$processingVersionVariable" ]]; then
 				index="${i}"
 				affectedLibraries="${affectedLibraries},${transformedAffectedLibraries[${i}]}"
 				releaseNotes="${releaseNotes},${transformedReleaseNotes[${i}]}"
 			fi
 		done
 
+		shortIds[$index]="$shortId"
 		updateMechanism[$index]="$mechanism"
-		transformedDependencies[$index]="$extVersionVariable"
+		transformedDependencies[$index]="$processingVersionVariable"
 		transformedVersions[$index]="$currentVersion $availableVersion"
 		transformedReleaseNotes[$index]="$releaseNotes"
 		transformedAffectedLibraries[$index]="$affectedLibraries"
 	else
-		log "${RED}Couldnt find the extVersionVariable for '$group:$name' ${RESET}"
+		log "${RED}Couldnt find the version variable for '$group:$name' ${RESET}"
 	fi
 done
 
 for i in "${!transformedDependencies[@]}"; do
 	versions=(${transformedVersions[$i]})
 	uniqueId="${transformedDependencies[$i]}"
-	shortId=$([ "$isToml" == "true" ] && echo "$(echo "$uniqueId" | awk -F " " '{ print $1 }')" || echo "$uniqueId")
+	shortId="${shortIds[$i]}"
 
 	if [[ -n "$uniqueId" ]]; then
 		if [[ "$(contains ignoreItems "$shortId")" == "false" ]]; then
-			main "$shortId" "$uniqueId" "${versions[0]}" "${versions[1]}" "${transformedReleaseNotes[$i]}" "${transformedAffectedLibraries[$i]}" "$versionsPath" "$branch" "$callback" "${updateMechanism[$i]}" "$isToml"
+			main "$shortId" "$uniqueId" "${versions[0]}" "${versions[1]}" "${transformedReleaseNotes[$i]}" "${transformedAffectedLibraries[$i]}" "$versionsPath" "$branch" "$callback" "${updateMechanism[$i]}" "$toml"
 		else
 			log "$shortId is in ignore list. Skipping it..."
 		fi
