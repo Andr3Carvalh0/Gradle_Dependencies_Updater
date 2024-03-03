@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 2nd March 2024
+# Last modified: 3rd March 2024
 #
 # Processes a json with the format:
 #	[
@@ -46,7 +46,7 @@ function main() {
 	log "\nResetting back to '$mainBranch' branch..."
 	git reset "$file" > /dev/null
 	git checkout --force "${mainBranch}" || {
-		log "Couldnt fetch '$mainBranch'. Please check if '$mainBranch' exists."
+		log "${RED}Couldn't fetch '$mainBranch'. Please check if '$mainBranch' exists.${RESET}"
 		exit 1
 	}
 
@@ -82,7 +82,7 @@ function prepareBranch() {
 	local baseBranch="$2"
 	local updateMechanism="$3"
 
-	log "\nPreparing working branch..."
+	log "\nPreparing working branch ($branch)..."
 
 	if [[ "$updateMechanism" == "$REBASE" ]]; then
 		git checkout --force "$branch"
@@ -120,7 +120,7 @@ function updateDependenciesFile() {
 		local originalVersion="$(findInFile "$substring " "$file")"
 
 		if [ -z "$originalVersion" ]; then
-			log "${RED}Couldnt find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE${RESET}"
+			log "${RED}Couldn't find the original version declaration. Please check if you declared with a space after the ':'. eg: KEY : VALUE${RESET}"
 		else
 			local versionInFile="$(echo "$originalVersion" | awk '{print $NF}')"
 			local versionInFileTransformed="$(echo "${versionInFile//\"}")"
@@ -259,7 +259,7 @@ function publish() {
 			log "\nPushing changes to remote..."
 			git push --force "$REMOTE" "$branch"
 		else
-			log "\nNothing to push. Skipping..."
+			log "\nNothing to push. Skipping it..."
 		fi
 	fi
 }
@@ -317,13 +317,13 @@ function booleanInput() {
 
 function help() {
 	log "${BOLD}Gradle Dependencies Updater ($VERSION) developed by André Carvalho${RESET}\n"
-	log "Usage: $0 -j \"{ ... }\" -d \"path to the file where dependencies are declared\" -v \"path to the file where dependencies versions are declared\""
+	log "Usage: $0 -j \"{ ... }\" -d \"path(s) to the file(s) where the dependencies are declared\" -v \"path to the file where the dependencies versions are declared\""
 	log "    -j, --json        \t The dependencies json content."
 	log "    -d, --dependencies\t The path(s) to the file(s) where the dependencies are declared, separated by comma ','."
 	log "    -v, --versions    \t The path to the file where the dependency versions are declared."
 	log "    -b, --branch      \t The name of the main git branch."
 	log "    -i, --ignore      \t All the dependencies ids that should be ignored, separated by comma ','."
-	log "    -r, --rebase      \t Wether or not to rebase already processed dependencies updates."
+	log "    -r, --rebase      \t Wether or not to rebase an already processed dependencies updates."
 	log "    -c, --callback    \t The path to a shell script that gets called when an update to a dependency is made. It gets all the params as key values pairs.\n"
 	exit 1
 }
@@ -331,7 +331,7 @@ function help() {
 clear
 
 if ! [[ -x "$(command -v jq)" ]]; then
-	log "${RED}\"jq\" couldnt be found. Please be sure its installed and included in your PATH environment variable!\n${RESET}"
+	log "${RED}\"jq\" couldn't be found. Please be sure it's installed and included in your PATH environment variable!\n${RESET}"
 	exit 1
 fi
 
@@ -405,7 +405,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 		# If the source branch has received an update, we will delete the updated branch and process it again to get the latest changes.
 		if [[ "$(isVersionUpdateAlreadyProcessed "$shortId")" == "true" ]]; then
 			if [[ "$reprocess" == "false" ]]; then
-				log "'$group:$name:$availableVersion' was processed before and rebasing it disabled. Skipping it..."
+				log "'$group:$name:$availableVersion' was processed before and rebasing is disabled. Skipping it..."
 				continue
 			fi
 
@@ -450,7 +450,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 		transformedReleaseNotes[$index]="$releaseNotes"
 		transformedAffectedLibraries[$index]="$affectedLibraries"
 	else
-		log "${RED}Couldnt find the version variable for '$group:$name' ${RESET}"
+		log "${RED}Couldn't find the version variable for '$group:$name' ${RESET}"
 	fi
 done
 
