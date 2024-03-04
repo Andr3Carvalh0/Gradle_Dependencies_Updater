@@ -42,11 +42,14 @@ def dependenciesDenylist = [
 ]
 
 def dependenciesChangelog = [
-        (String url, String installedVersion, String newVersion, String group) -> { return url.contains("#") ? url : null },
-        (String url, String installedVersion, String newVersion, String group) -> {
-            return url.contains("https://github.com/") ? "$url/releases/tag/$newVersion" : null
+        (String url, String installedVersion, String newVersion, String group, String name) -> { return url.contains("#") ? url : null },
+        (String url, String installedVersion, String newVersion, String group, String name) -> {
+            def prefixedGroups = ["accompanist", "cmplibrary", "lottie"]
+            def prefix = (prefixedGroups.contains(name)) ? "v" : ""
+
+            return url.contains("https://github.com/") ? "$url/releases/tag/${prefix}${newVersion}" : null
         },
-        (String url, String installedVersion, String newVersion, String group) -> {
+        (String url, String installedVersion, String newVersion, String group, String name) -> {
             def library = group.split('\\.')
             def parsedVersion = newVersion.replace(".", "")
 
@@ -75,7 +78,7 @@ def dependenciesChangelog = [
 
             return null
         },
-        (String url, String installedVersion, String newVersion, String group) -> { return url }
+        (String url, String installedVersion, String newVersion, String group, String name) -> { return url }
 ]
 
 tasks.named("dependencyUpdates").configure {
@@ -128,7 +131,7 @@ tasks.named("dependencyUpdates").configure {
 
                         def changelogPredicate = dependenciesChangelog.stream()
                                 .filter { predicate ->
-                                    predicate(url, dependency.version, version, dependency.group) != null
+                                    predicate(url, dependency.version, version, dependency.group, dependency.name) != null
                                 }
                                 .toArray()[0]
 
@@ -137,7 +140,7 @@ tasks.named("dependencyUpdates").configure {
                                 group: dependency.group,
                                 currentVersion: dependency.version,
                                 availableVersion: version,
-                                changelog: changelogPredicate(url, dependency.version, version, dependency.group)
+                                changelog: changelogPredicate(url, dependency.version, version, dependency.group, dependency.name)
                         )
                     }
                     .eachWithIndex { dependency, index ->
