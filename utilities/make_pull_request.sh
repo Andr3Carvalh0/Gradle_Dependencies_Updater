@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Created by André Carvalho on 19th February 2024
-# Last modified: 27nd February 2024
+# Last modified: 4th March 2024
 #
 # Creates a pull request in Bitbucket.
 #
@@ -72,7 +72,7 @@ function main() {
 	local dependencyPr="$(echo "$openedPrs" | jq '.values' | jq -r --arg title "Update $variable from" -c '.[] | select(.title | contains($title))')"
 
 	local prTitle="Update $variable from version $fromVersion to version $toVersion"
-	local prDescription="This PR updates **$variable** from version **$fromVersion** to **$toVersion**. \n\n### **🔗 Updated libraries:**\n\n$(getUpdatedLibraries "$modules") \n\n### **🌍 Changelogs:**\n\n$(getChangelogs "$modules" "$releaseNotes")\n---\n\n🤖 This PR has been created by the [Gradle Dependencies Updater](https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater) script.\n‌"
+	local prDescription="This PR updates **$variable** from version **$fromVersion** to **$toVersion**. \n\n### **🔗 Updated libraries:**\n\n$(getUpdatedLibraries "$modules") \n\n### **🌍 Changelogs:**\n\n$(getChangelogs "$modules" "$releaseNotes")\n---\n\n🤖 This PR was created by the [Gradle Dependencies Updater](https://github.com/Andr3Carvalh0/Gradle_Dependencies_Updater) script.\n‌"
 
 	if [[ -z "$dependencyPr" ]]; then
 		echo -e "\nOpening a new Pull Request..."
@@ -98,11 +98,11 @@ function main() {
 					\"close_source_branch\": true
 				}"
 	else
-		echo -e "\nA Pull Request is already opened. Updating the metadata..."
+		echo -e "\nA Pull Request is already opened. Updating the metadata to indicate we are updating to version \"$toVersion\"..."
 		local prTitle="$(echo "$dependencyPr" | jq '.title')"
 
 		if [[ "$prTitle" == *"$toVersion"* ]]; then
-			echo -e "\nA Pull Request is already opened. Skipping it..."
+			echo -e "\nThere is nothing to update in the Pull Request since it already mentions the latest versions, skipping it..."
 		else
 			local prId="$(echo "$dependencyPr" | jq '.id')"
 			echo -e "\nUpdating Pull Request ($prId) title to mention the new version...."

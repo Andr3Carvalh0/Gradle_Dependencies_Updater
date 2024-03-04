@@ -56,11 +56,7 @@ function main() {
 	publish "$id" "$fromVersion" "$toVersion" "$file" "$mainBranch" "$affectedLibraries" "$releaseNotes" "$callback" "$updateMechanism"
 
 	if [[ "$updateMechanism" == "$REBASE" ]]; then
-		local command="$(git rev-parse --verify REBASE_HEAD)"
-
-		if [[ "$?" != "128" ]]; then
-			git rebase --abort &> /dev/null
-		fi
+		git rebase --abort &> /dev/null
 	fi
 
 	echo -e "\n${GREEN}Done processing $id${RESET}"
