@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Created by André Carvalho on 19th February 2024
-# Last modified: 4th March 2024
+# Last modified: 7th March 2024
 #
 # Creates a pull request in Bitbucket.
 #
@@ -34,7 +34,7 @@ function getUpdatedLibraries() {
 	local result=""
 
 	for i in "${!modulesArray[@]}"; do
-		result="- ${modulesArray[${i}]}\n"
+		result="$result- ${modulesArray[${i}]} \n"
 	done
 
 	echo "$result"
@@ -53,7 +53,9 @@ function getChangelogs() {
 		IFS=':' read -ra parts <<< "${modulesArray[${i}]}"
 		local id=$([ "${#parts[@]}" == "1" ] && echo "${modulesArray[${i}]}" || echo "${parts[1]}")
 		
-		result="- [Changelog for $id](${notesArray[${i}]}){: data-inline-card='' } \n"
+		if [[ "$result" != *"${notesArray[${i}]}"* ]]; then
+			result="$result- [Changelog for $id](${notesArray[${i}]}){: data-inline-card='' } \n"
+		fi
 	done
 
 	echo "$result"
