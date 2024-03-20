@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 3rd March 2024
+# Last modified: 20th March 2024
 #
 # Processes a json with the format:
 #	[
@@ -139,7 +139,21 @@ function findVersionsVariableName() {
 	local toml="$4"
 
 	if [[ "$toml" == "true" ]]; then
-		local dependency="$(findInFile "module = \"$group:$name\"" "$file")"
+		local dependency=""
+		readonly lookups=(
+			"module = \"$group:$name\""
+			"group = \"$group\", name = \"$name\""
+			"id = \"$group\""
+		)
+
+		for item in "${lookups[@]}"; do
+			local result=$(findInFile "$item" "$file")
+
+			if [ -n "$result" ]; then
+				dependency="$result"
+				break
+			fi
+		done
 
 		if [ -n "$dependency" ]; then
 			if [[ "$dependency" == *"version.ref = "* ]]; then
