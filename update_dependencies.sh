@@ -407,7 +407,12 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	echo -e "Processing $group:$name..."
 
 	if [[ "$processingVersionVariable" != "-1" ]]; then
-		shortId=$([[ "$toml" == "true" ]] && "$(echo "$processingVersionVariable" | awk -F " " '{ print $1 }')" || echo "$processingVersionVariable")
+		shortId="$processingVersionVariable"
+
+		if [[ "$toml" == "true" ]]; then
+			shortId="$(echo "$processingVersionVariable" | awk -F " " '{ print $1 }')"
+		fi
+
 		mechanism="$NONE"
 
 		# If the update already exists. We will check the amount of differences between the source branch and the updated branch.

@@ -228,7 +228,7 @@ function hasOpenedBranchBeenUpdated() {
 As you could have read this project is composed of 3 components: 
 
 - 🤖 [If you wanna check all of those in action check the Android project.](./example/)
-- 💻 If you wanna just check the dependabot component... You can use the jsons you find on the `data` folder, and pass them to the `dependencies.sh` script. Like so:
+- 💻 If you wanna just check the dependabot component... You can use the jsons you find on the `data` folder, and pass them to the `update_dependencies.sh` script. Like so:
 
 For the script to function you need to at least pass 3 parameters: 
 
@@ -238,7 +238,7 @@ For the script to function you need to at least pass 3 parameters:
 
 eg: 
 ```
-./dependencies.sh --json "`cat ./data/data_with_duplicated.json`" \
+./update_dependencies.sh --json "`cat ./data/data_with_duplicated.json`" \
 	--dependencies "./gradle/dependencies.gradle" \
 	--versions "./gradle/dependencies.gradle" 
 ```
@@ -247,5 +247,5 @@ eg:
 
 I've also included a utilities folder, with some goodies in it 😄
 
-- `ci.sh`: Script for the pipeline. It will generate the `report.json` with all the version updates, and then call the `dependencies.sh` script so all the update branches are created.
-- `make_pull_request`: Script to create a PR in Bitbucket. You can use it on your own, or pass it to the `dependencies.sh`, like the `ci.sh` does.
+- `ci.sh`: Script for the pipeline. It will generate the `report.json` with all the version updates, and then call the `update_dependencies.sh` script so all the update branches are created.
+- `make_pull_request`: Script to create a PR in Bitbucket. You can use it on your own, or pass it to the `update_dependencies.sh`, like the `ci.sh` does.
