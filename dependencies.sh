@@ -20,7 +20,7 @@
 readonly BRANCH_PREFIX="housechores"
 readonly REMOTE="origin"
 readonly DEFAULT_BRANCH="develop"
-readonly VERSION="2.1.2"
+readonly VERSION="2.1.3"
 
 readonly BOLD='\033[1m'
 readonly RED='\033[0;31m'
@@ -379,6 +379,7 @@ for row in $(echo "$json" | jq -r '.[] | @base64'); do
 	currentVersion=$(_jq '.currentVersion')
 	availableVersion=$(_jq '.availableVersion')
 	changelog=$(_jq '.changelog')
+	processingVersionVariable="-1"
 
 	for i in "${!dependenciesPath[@]}"; do
 		versionVariable="$(findVersionsVariableName "$group" "$name" "${dependenciesPath[${i}]}" "$toml")"
