@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Created by André Carvalho on 10th September 2021
-# Last modified: 20th March 2024
+# Last modified: 27th March 2024
 #
 # Processes a json with the format:
 #	[
@@ -20,7 +20,7 @@
 readonly BRANCH_PREFIX="housechores"
 readonly REMOTE="origin"
 readonly DEFAULT_BRANCH="develop"
-readonly VERSION="2.1.3"
+readonly VERSION="2.1.4"
 
 readonly BOLD='\033[1m'
 readonly RED='\033[0;31m'
@@ -179,7 +179,7 @@ function findVersionsVariableName() {
 			fi
 		else
 			# Handle Gradle Plugins versions
-			dependency="$(findInFile "$group" "$file")"
+			dependency="$(findInFile "id(\"$group\")" "$file")"
 
 			if [[ -n "$dependency" ]]; then
 				versionVariable="$(substring "." "" "$(substring "version" "" "$dependency")")"
